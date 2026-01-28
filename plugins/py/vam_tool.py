@@ -7,12 +7,6 @@ import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
-# Add scripts/py to path to import core module
-plugin_path = os.path.dirname(__file__)
-scripts_path = os.path.join(os.path.dirname(plugin_path), 'scripts', 'py')
-if scripts_path not in sys.path:
-    sys.path.insert(0, scripts_path)
-
 from core import VamCore
 
 # Import hotkey context functions (will be available after setup)
@@ -125,14 +119,14 @@ class VamContextCmd(omui.MPxContextCommand):
 def initializePlugin(mobj):
     mplugin = om.MFnPlugin(mobj, 'VamPlugin', '1.0', 'Any')
     try:
-        mplugin.registerContextCommand('vam', VamContextCmd)
+        mplugin.registerContextCommand('vamCmd', VamContextCmd)
     except:
-        raise Exception('failed to register vam')
+        raise Exception('failed to register vam command')
     
 
 def uninitializePlugin(mobj):
     mplugin = om.MFnPlugin(mobj)
     try:
-        mplugin.deregisterContextCommand('vam')
+        mplugin.deregisterContextCommand('vamCmd')
     except:
-        raise Exception('failed to deregister vam')
+        raise Exception('failed to deregister vam command')

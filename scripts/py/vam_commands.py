@@ -101,6 +101,7 @@ def vam_cycle_base():
 # Hotkey Context Setup
 # ============================================================================
 
+VAM_HOTKEY_SET = "vamToolSet"
 VAM_HOTKEY_CONTEXT = "vamToolContext"
 
 
@@ -117,19 +118,19 @@ def create_vam_commands():
             'name': 'vamToMoving',
             'annotation': 'VAM: Enter moving state',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_to_moving; vam_to_moving()")'
+            'command': 'from vam_commands import vam_to_moving; vam_to_moving()'
         },
         {
             'name': 'vamToNormal',
             'annotation': 'VAM: Return to normal state',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_to_normal; vam_to_normal()")'
+            'command': 'from vam_commands import vam_to_normal; vam_to_normal()'
         },
         {
             'name': 'vamToRegisterPicking',
             'annotation': 'VAM: Enter register picking state',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_to_register_picking; vam_to_register_picking()")'
+            'command': 'from vam_commands import vam_to_register_picking; vam_to_register_picking()'
         },
         
         # Transform modes
@@ -137,19 +138,19 @@ def create_vam_commands():
             'name': 'vamSetTranslate',
             'annotation': 'VAM: Set translate mode',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_translate; vam_set_translate()")'
+            'command': 'from vam_commands import vam_set_translate; vam_set_translate()'
         },
         {
             'name': 'vamSetRotate',
             'annotation': 'VAM: Set rotate mode',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_rotate; vam_set_rotate()")'
+            'command': 'from vam_commands import vam_set_rotate; vam_set_rotate()'
         },
         {
             'name': 'vamSetScale',
             'annotation': 'VAM: Set scale mode',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_scale; vam_set_scale()")'
+            'command': 'from vam_commands import vam_set_scale; vam_set_scale()'
         },
         
         # Axis constraints
@@ -157,19 +158,19 @@ def create_vam_commands():
             'name': 'vamSetAxisX',
             'annotation': 'VAM: Constrain to X axis',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_axis_x; vam_set_axis_x()")'
+            'command': 'from vam_commands import vam_set_axis_x; vam_set_axis_x()'
         },
         {
             'name': 'vamSetAxisY',
             'annotation': 'VAM: Constrain to Y axis',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_axis_y; vam_set_axis_y()")'
+            'command': 'from vam_commands import vam_set_axis_y; vam_set_axis_y()'
         },
         {
             'name': 'vamSetAxisZ',
             'annotation': 'VAM: Constrain to Z axis',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_set_axis_z; vam_set_axis_z()")'
+            'command': 'from vam_commands import vam_set_axis_z; vam_set_axis_z()'
         },
         
         # Base space
@@ -177,7 +178,7 @@ def create_vam_commands():
             'name': 'vamCycleBase',
             'annotation': 'VAM: Cycle base space (screen/local/world)',
             'category': 'VAM',
-            'command': 'python("from vam_commands import vam_cycle_base; vam_cycle_base()")'
+            'command': 'from vam_commands import vam_cycle_base; vam_cycle_base()'
         },
     ]
     
@@ -204,10 +205,18 @@ def create_vam_hotkey_context():
     This context is activated when the VAM tool becomes active,
     and deactivated when the tool is exited.
     """
-    # Create hotkey context if it doesn't exist
-    if not cmds.hotkeyCtx(VAM_HOTKEY_CONTEXT, exists=True):
-        cmds.hotkeyCtx(VAM_HOTKEY_CONTEXT)
+    # Create hotkey set & context if it doesn't exist
+    if not cmds.hotkeySet(VAM_HOTKEY_SET, ex=True):
+        cmds.hotkeySet(VAM_HOTKEY_SET, cu=True)
+        print(f"Created hotkey set: {VAM_HOTKEY_SET}")
+    if not cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True):
+        cmds.hotkeyCtx(ita=('', VAM_HOTKEY_CONTEXT))
         print(f"Created hotkey context: {VAM_HOTKEY_CONTEXT}")
+    
+    # Associate context with viewport panels (modelPanel)
+    # This makes the context active when focus is in a 3D viewport
+    cmds.hotkeyCtx(t=VAM_HOTKEY_CONTEXT, ac='modelPanel')
+    print(f"Associated {VAM_HOTKEY_CONTEXT} with modelPanel (3D viewports)")
     
     # Define key bindings for VAM tool
     # Format: (key, modifier, command_name, press/release)
@@ -233,10 +242,7 @@ def create_vam_hotkey_context():
     for key, modifier, command_name, is_press in key_bindings:
         # Create name command if it doesn't exist
         name_cmd = f"{command_name}NameCommand"
-        if cmds.nameCommand(name_cmd, exists=True):
-            cmds.nameCommand(name_cmd, edit=True, command=command_name)
-        else:
-            cmds.nameCommand(name_cmd, annotation=f"{command_name}", command=command_name)
+        cmds.nameCommand(name_cmd, annotation=f"{command_name}", command=command_name)
         
         # Bind to hotkey in VAM context
         press_release = 'press' if is_press else 'release'
@@ -274,12 +280,26 @@ def activate_vam_hotkey_context():
     Activate the VAM hotkey context.
     
     Call this when the VAM tool becomes active.
+    Sets the current client to the active modelPanel (3D viewport).
     """
-    if cmds.hotkeyCtx(VAM_HOTKEY_CONTEXT, exists=True):
-        cmds.hotkeyCtx(VAM_HOTKEY_CONTEXT, edit=True, current=True)
-        print(f"Activated hotkey context: {VAM_HOTKEY_CONTEXT}")
-    else:
+    if not cmds.hotkeyCtx(VAM_HOTKEY_CONTEXT, exists=True):
         print(f"Warning: Hotkey context {VAM_HOTKEY_CONTEXT} does not exist")
+        return
+    
+    # Get the currently active model panel (3D viewport)
+    active_panel = cmds.getPanel(withFocus=True)
+    
+    # Check if it's a model panel (3D viewport)
+    if active_panel and cmds.getPanel(typeOf=active_panel) == 'modelPanel':
+        # Set this specific modelPanel as the current client for VAM context
+        cmds.hotkeyCtx(t=VAM_HOTKEY_CONTEXT, currentClient=active_panel)
+        print(f"Activated hotkey context: {VAM_HOTKEY_CONTEXT} for {active_panel}")
+    else:
+        # Fallback: just set the context type as current
+        # This will work with any associated modelPanel
+        cmds.hotkeyCtx(t=VAM_HOTKEY_CONTEXT, currentClient='modelPanel')
+        print(f"Activated hotkey context: {VAM_HOTKEY_CONTEXT} (generic modelPanel)")
+
 
 
 def deactivate_vam_hotkey_context():
@@ -289,8 +309,9 @@ def deactivate_vam_hotkey_context():
     Call this when the VAM tool is exited.
     """
     # Return to default hotkey context
-    cmds.hotkeyCtx("default", edit=True, current=True)
-    print(f"Deactivated hotkey context, returned to default")
+    active_panel = cmds.getPanel(withFocus=True)
+    cmds.hotkeyCtx(t="Global", cc=active_panel)
+    print(f"Deactivated hotkey context, returned to Global")
 
 
 def setup_vam_hotkeys():

@@ -29,6 +29,9 @@ def initialize_vam():
         # load nodes
         cmds.loadPlugin('vam_tool')
 
+        # create a context command instance
+        cmds.vamCmd('vam')
+
         # test
         basic_test.test_tool()
 
