@@ -44,9 +44,6 @@ class VamContext(omui.MPxContext):
         print("VAM Tool Active")
         om.MGlobal.displayInfo("VAM: Modal tool active. Press 'q' or 'Esc' to exit.")
         
-        # Ensure we're in normal state when tool activates
-        self.vam_core.to_normal()
-        
         # Activate VAM hotkey context
         if HOTKEY_CONTEXT_AVAILABLE:
             activate_vam_hotkey_context()
@@ -54,9 +51,6 @@ class VamContext(omui.MPxContext):
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
-        
-        # Return to normal state when tool is deactivated
-        self.vam_core.to_normal()
         
         # Deactivate VAM hotkey context
         if HOTKEY_CONTEXT_AVAILABLE:

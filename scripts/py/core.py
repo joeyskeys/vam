@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import traceback
 from utils import singleton
 
 
@@ -105,6 +106,7 @@ class StateMachine:
         
         if not valid_transition:
             print(f"Cannot trigger '{trigger_name}' from state '{self.state}'")
+            print(traceback.print_stack())
             return False
         
         old_state = self.state
