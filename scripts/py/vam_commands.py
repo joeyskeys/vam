@@ -222,7 +222,7 @@ def create_vam_hotkey_context():
     # Format: (key, modifier, command_name, press/release)
     key_bindings = [
         # State transitions
-        ('g', '', 'vamToMoving', True),        # 'g' to enter moving (like Blender)
+        ('w', '', 'vamToMoving', True),        # 'g' to enter moving (like Blender)
         ('Escape', '', 'vamToNormal', True),   # Escape to return to normal
         
         # Transform modes (when in moving state)

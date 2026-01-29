@@ -32,9 +32,6 @@ def initialize_vam():
         # create a context command instance
         cmds.vamCmd('vam')
 
-        # test
-        basic_test.test_tool()
-
         print("vam initialized successfully")
     except Exception as e:
         print("Error in vam initialization:")
