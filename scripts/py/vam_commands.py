@@ -205,10 +205,15 @@ def create_vam_hotkey_context():
     This context is activated when the VAM tool becomes active,
     and deactivated when the tool is exited.
     """
-    # Create hotkey set & context if it doesn't exist
+    # Create hotkey set if it doesn't exist
     if not cmds.hotkeySet(VAM_HOTKEY_SET, ex=True):
         cmds.hotkeySet(VAM_HOTKEY_SET, cu=True)
         print(f"Created hotkey set: {VAM_HOTKEY_SET}")
+    else:
+        cmds.hotkeySet(VAM_HOTKEY_SET, cu=True, e=True)
+        print(f"Switched to hotkey set: {VAM_HOTKEY_SET}")
+    
+    # Same for context
     if not cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True):
         cmds.hotkeyCtx(ita=('', VAM_HOTKEY_CONTEXT))
         print(f"Created hotkey context: {VAM_HOTKEY_CONTEXT}")
