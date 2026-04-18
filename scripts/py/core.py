@@ -43,6 +43,7 @@ class StateMachine:
                 - dest: Destination state name
                 - before: (optional) Callback method name to call before transition
                 - after: (optional) Callback method name to call after transition
+                - noop: (optional) If True, accept trigger but perform no changes
             initial: Name of the initial state (default: 'initial')
         """
         self.model = model
@@ -111,6 +112,11 @@ class StateMachine:
         
         old_state = self.state
         new_state = valid_transition['dest']
+
+        # Explicit no-op transition support:
+        # accept the trigger but do not call callbacks or change state.
+        if valid_transition.get('noop', False):
+            return True
         
         # Execute before callback if defined
         if 'before' in valid_transition:
@@ -203,6 +209,7 @@ class VamCore:
     # Creates trigger methods: to_moving(), to_normal(), to_register_picking()
     transitions = [
         {'trigger': 'to_moving', 'source': 'normal', 'dest': 'moving', 'before': 'before_moving'},
+        {'trigger': 'to_normal', 'source': 'normal', 'dest': 'normal', 'noop': True},
         {'trigger': 'to_normal', 'source': ['moving', 'register_picking'], 'dest': 'normal', 'before': 'before_normal'},
         {'trigger': 'to_register_picking', 'source': 'normal', 'dest': 'register_picking'},
     ]

@@ -105,6 +105,42 @@ VAM_HOTKEY_SET = "vamToolSet"
 VAM_HOTKEY_CONTEXT = "vamToolContext"
 
 
+def begin_vam_tool_hotkey_set():
+    """
+    Save the active hotkey set, then switch to the VAM hotkey set.
+
+    Creates the VAM set (duplicated from the current set) if it does not exist;
+    otherwise switches the current hotkey set to VAM. Call
+    restore_vam_tool_hotkey_set with the returned name when the VAM tool exits.
+
+    Returns:
+        str | None: Name of the hotkey set that was current before switching.
+    """
+    previous = cmds.hotkeySet(q=True, current=True)
+    if isinstance(previous, (list, tuple)):
+        previous = previous[0] if previous else None
+
+    if cmds.hotkeySet(VAM_HOTKEY_SET, exists=True):
+        cmds.hotkeySet(VAM_HOTKEY_SET, edit=True, current=True)
+    else:
+        cmds.hotkeySet(VAM_HOTKEY_SET, current=True)
+
+    print('previous hotkey set:', previous)
+    print('switched to vam hotkey set')
+
+    return previous
+
+
+def restore_vam_tool_hotkey_set(previous_set_name):
+    """Restore the hotkey set that was current before begin_vam_tool_hotkey_set."""
+    if not previous_set_name:
+        return
+    if cmds.hotkeySet(previous_set_name, exists=True):
+        cmds.hotkeySet(previous_set_name, edit=True, current=True)
+    
+    print('restored hotkey set:', previous_set_name)
+
+
 def create_vam_commands():
     """
     Create runtime commands that can be bound to hotkeys.
@@ -200,19 +236,12 @@ def create_vam_commands():
 
 def create_vam_hotkey_context():
     """
-    Create a custom hotkey context for VAM tool.
-    
-    This context is activated when the VAM tool becomes active,
-    and deactivated when the tool is exited.
+    Create a custom hotkey context for VAM tool (bindings, modelPanel association).
+
+    The VAM hotkey set itself is not created or switched here; that is a
+    persisting preference and is handled when the VAM tool activates
+    (see begin_vam_tool_hotkey_set).
     """
-    # Create hotkey set if it doesn't exist
-    if not cmds.hotkeySet(VAM_HOTKEY_SET, ex=True):
-        cmds.hotkeySet(VAM_HOTKEY_SET, cu=True)
-        print(f"Created hotkey set: {VAM_HOTKEY_SET}")
-    else:
-        cmds.hotkeySet(VAM_HOTKEY_SET, cu=True, e=True)
-        print(f"Switched to hotkey set: {VAM_HOTKEY_SET}")
-    
     # Same for context
     if not cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True):
         cmds.hotkeyCtx(ita=('', VAM_HOTKEY_CONTEXT))

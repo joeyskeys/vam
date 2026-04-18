@@ -2,16 +2,23 @@
 
 import sys
 import os
+from importlib import reload
 
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
-from core import VamCore
+import core
+reload(core)
 
 # Import hotkey context functions (will be available after setup)
 try:
-    from vam_commands import activate_vam_hotkey_context, deactivate_vam_hotkey_context
+    from vam_commands import (
+        activate_vam_hotkey_context,
+        begin_vam_tool_hotkey_set,
+        deactivate_vam_hotkey_context,
+        restore_vam_tool_hotkey_set,
+    )
     HOTKEY_CONTEXT_AVAILABLE = True
 except ImportError:
     HOTKEY_CONTEXT_AVAILABLE = False
@@ -37,24 +44,26 @@ class VamContext(omui.MPxContext):
         self.setCursor(omui.MCursor.kCrossHairCursor)
         
         # Get VamCore singleton instance
-        self.vam_core = VamCore()
+        self.vam_core = core.VamCore()
 
     def toolOnSetup(self, event):
         """Called when tool becomes active."""
         print("VAM Tool Active")
         om.MGlobal.displayInfo("VAM: Modal tool active. Press 'q' or 'Esc' to exit.")
         
-        # Activate VAM hotkey context
         if HOTKEY_CONTEXT_AVAILABLE:
+            self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
             activate_vam_hotkey_context()
+        else:
+            self._vam_prev_hotkey_set = None
 
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
         
-        # Deactivate VAM hotkey context
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
+            restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
 
     def doPress(self, event, drawMgr, frameContext):
         """
