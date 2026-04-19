@@ -52,7 +52,7 @@ class VamContext(omui.MPxContext):
         om.MGlobal.displayInfo("VAM: Modal tool active. Press 'q' or 'Esc' to exit.")
         
         if HOTKEY_CONTEXT_AVAILABLE:
-            self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
+            #self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
             activate_vam_hotkey_context()
         else:
             self._vam_prev_hotkey_set = None
@@ -63,7 +63,7 @@ class VamContext(omui.MPxContext):
         
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
-            restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
+            #restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
 
     def doPress(self, event, drawMgr, frameContext):
         """
@@ -92,24 +92,6 @@ class VamContext(omui.MPxContext):
         # Forward event to state machine
         self.vam_core.handle_mouse_event(event)
         
-    def doKeyDown(self, event):
-        """
-        Handle Keyboard Input while tool is active.
-        
-        Forward to state machine for processing by current state.
-        """
-        key = event.key()
-        
-        # 'q' key (standard Maya exit) or Esc - always exit tool
-        if key == 113 or key == 4100: 
-            print("Exiting VAM Tool...")
-            # Switch back to the standard Select Tool
-            cmds.setToolTo('selectSuperContext')
-            return
-        
-        # Forward keyboard event to state machine
-        self.vam_core.handle_key_event(event)
-
 
 class VamContextCmd(omui.MPxContextCommand):
     def __init__(self):

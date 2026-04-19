@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import traceback
+
+from register_manager import RegisterManager
 from utils import singleton
 
 
@@ -195,7 +197,7 @@ class VamCore:
     Core singleton for VAM tool state management.
     
     Manages:
-    - State machine with Normal, Moving, and RegisterPicking states
+    - State machine with Normal, Moving, RegisterSetup, and RegisterPicking states
     - Shared transform settings (trs, axis, base)
     - Provides interface for state transitions
     
@@ -203,14 +205,20 @@ class VamCore:
     """
     
     # State definitions
-    states = ['normal', 'moving', 'register_picking']
+    states = ['normal', 'moving', 'register_setup', 'register_picking']
     
     # Transition definitions
-    # Creates trigger methods: to_moving(), to_normal(), to_register_picking()
+    # Creates trigger methods: to_moving(), to_normal(), to_register_setup(), to_register_picking()
     transitions = [
         {'trigger': 'to_moving', 'source': 'normal', 'dest': 'moving', 'before': 'before_moving'},
         {'trigger': 'to_normal', 'source': 'normal', 'dest': 'normal', 'noop': True},
-        {'trigger': 'to_normal', 'source': ['moving', 'register_picking'], 'dest': 'normal', 'before': 'before_normal'},
+        {
+            'trigger': 'to_normal',
+            'source': ['moving', 'register_setup', 'register_picking'],
+            'dest': 'normal',
+            'before': 'before_normal',
+        },
+        {'trigger': 'to_register_setup', 'source': 'normal', 'dest': 'register_setup'},
         {'trigger': 'to_register_picking', 'source': 'normal', 'dest': 'register_picking'},
     ]
     
@@ -237,6 +245,27 @@ class VamCore:
             transitions=self.transitions,
             initial='normal'
         )
+
+        self.register_manager = RegisterManager()
+
+        self.key_mapping = {}
+
+    def init_key_mapping(self):
+        for c in range(32, 127):
+            self.key_mapping[chr(c)] = []
+
+        for f_n in range(1, 13):
+            self.key_mapping[f'f{f_n}'] = []
+
+        special_keys = (
+            'Up', 'Down', 'Left', 'Right',
+            'Home', 'End', 'PageUp', 'PageDown', 'Insert',
+            'Return', 'Space',
+            'Tab',
+            'Delete', 'Backspace',
+        )
+        for k in special_keys:
+            self.key_mapping[k] = []
     
     # State lifecycle callbacks
     def on_enter_normal(self):
@@ -266,7 +295,15 @@ class VamCore:
     def on_exit_register_picking(self):
         """Called when exiting register picking state."""
         print("Exiting REGISTER_PICKING state")
-    
+
+    def on_enter_register_setup(self):
+        """Called when entering register setup state (assign / use registers)."""
+        print("Entered REGISTER_SETUP state")
+
+    def on_exit_register_setup(self):
+        """Called when exiting register setup state."""
+        print("Exiting REGISTER_SETUP state")
+
     # Transition callbacks
     def before_moving(self):
         """Called before transitioning to moving state."""
@@ -285,13 +322,12 @@ class VamCore:
             event: Mouse event from Maya context
         """
         current_state = self.machine.get_state()
-        
-        if current_state == 'normal':
-            self._handle_mouse_normal(event)
-        elif current_state == 'moving':
-            self._handle_mouse_moving(event)
-        elif current_state == 'register_picking':
-            self._handle_mouse_register_picking(event)
+
+        handle_func = f'_handle_mouse_{current_state}'
+        if hasattr(self, handle_func):
+            getattr(self, handle_func)(event)
+        else:
+            print(f"No handler found for state: {current_state}")
     
     def handle_key_event(self, event):
         """
@@ -302,23 +338,21 @@ class VamCore:
         """
         current_state = self.machine.get_state()
         
-        if current_state == 'normal':
-            self._handle_key_normal(event)
-        elif current_state == 'moving':
-            self._handle_key_moving(event)
-        elif current_state == 'register_picking':
-            self._handle_key_register_picking(event)
+        handle_func = f'_handle_key_{current_state}'
+        if hasattr(self, handle_func):
+            getattr(self, handle_func)(event)
+        else:
+            print(f"No handler found for state: {current_state}")
     
     def update(self):
         """Update current state."""
         current_state = self.machine.get_state()
         
-        if current_state == 'normal':
-            self._update_normal()
-        elif current_state == 'moving':
-            self._update_moving()
-        elif current_state == 'register_picking':
-            self._update_register_picking()
+        update_func = f'_update_{current_state}'
+        if hasattr(self, update_func):
+            getattr(self, update_func)()
+        else:
+            print(f"No update handler found for state: {current_state}")
     
     # Normal state handlers
     def _handle_mouse_normal(self, event):
@@ -356,6 +390,34 @@ class VamCore:
         # TODO: Continuously update transform preview
         pass
     
+    def handle_register_key(self, register_key):
+        """
+        Hotkey entry for a register key. RegisterManager only binds the key;
+        this method applies state-specific behavior (e.g. recall selection).
+        """
+        if self.machine.get_state() == 'register_setup':
+            import maya.cmds as cmds
+
+            objects = self.register_manager.get_register_objects(register_key)
+            if objects:
+                cmds.select(*objects, replace=True)
+        else:
+            # Default when not in a register-aware state (extended later).
+            pass
+
+    # Register setup state handlers (stubs)
+    def _handle_mouse_register_setup(self, event):
+        """Handle mouse events in register setup state."""
+        pass
+
+    def _handle_key_register_setup(self, event):
+        """Handle keyboard events in register setup state."""
+        pass
+
+    def _update_register_setup(self):
+        """Update register setup state."""
+        pass
+
     # Register picking state handlers (stubs)
     def _handle_mouse_register_picking(self, event):
         """Handle mouse events in register picking state."""
@@ -385,6 +447,10 @@ class VamCore:
     def is_register_picking(self):
         """Check if in register picking state."""
         return self.machine.is_state('register_picking')
+
+    def is_register_setup(self):
+        """Check if in register setup state."""
+        return self.machine.is_state('register_setup')
 
 
 if __name__ == '__main__':

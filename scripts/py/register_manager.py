@@ -14,6 +14,8 @@ class RegisterManager:
     def __init__(self, hotkey_context='vamToolContext', category='VAM'):
         self.hotkey_context = hotkey_context
         self.category = category
+        # register_key -> list of object long names (selection targets)
+        self._register_objects = {}
 
     def set_register_from_selection(self, register_key):
         """
@@ -39,16 +41,22 @@ class RegisterManager:
             return False
         return True
 
+    def get_register_objects(self, register_key):
+        """Return stored object paths for a register, or None if unknown."""
+        return self._register_objects.get(register_key)
+
     def _bind_key_to_object(self, register_key, selection):
         if not cmds.hotkeyCtx(self.hotkey_context, exists=True):
             raise RuntimeError(f"Hotkey context does not exist: {self.hotkey_context}")
 
+        self._register_objects[register_key] = list(selection)
+
         runtime_name = f"vamSelectRegister_{register_key}"
         name_cmd = f"{runtime_name}NameCommand"
+        # Delegate to VamCore so state machine decides whether selection runs.
         command = (
-            "import maya.cmds as cmds;"
-            f"objs={str(selection)}; "
-            "cmds.select(*obj, r=True)"
+            "from core import VamCore; "
+            f"VamCore().handle_register_key({register_key!r})"
         )
 
         if cmds.runTimeCommand(runtime_name, exists=True):
