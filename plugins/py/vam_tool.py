@@ -52,7 +52,7 @@ class VamContext(omui.MPxContext):
         om.MGlobal.displayInfo("VAM: Modal tool active. Press 'q' or 'Esc' to exit.")
         
         if HOTKEY_CONTEXT_AVAILABLE:
-            #self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
+            self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
             activate_vam_hotkey_context()
         else:
             self._vam_prev_hotkey_set = None
@@ -63,7 +63,7 @@ class VamContext(omui.MPxContext):
         
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
-            #restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
+            restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
 
     def doPress(self, event, drawMgr, frameContext):
         """
