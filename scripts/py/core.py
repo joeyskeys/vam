@@ -1,226 +1,33 @@
 # -*- coding: utf-8 -*-
 
-import traceback
+import maya.cmds as cmds
 
 from register_manager import RegisterManager
 from utils import singleton
-
-
-class StateMachine:
-    """
-    Generic declarative state machine.
-    
-    States and transitions are defined as configuration data.
-    The machine dynamically creates trigger methods based on transition definitions.
-    Callbacks can be specified for state entry/exit and transition events.
-    
-    Example usage:
-        states = ['idle', 'running', 'stopped']
-        transitions = [
-            {'trigger': 'start', 'source': 'idle', 'dest': 'running', 'before': 'on_start'},
-            {'trigger': 'stop', 'source': 'running', 'dest': 'stopped', 'after': 'on_stop'},
-        ]
-        
-        machine = StateMachine(
-            model=my_obj,
-            states=states,
-            transitions=transitions,
-            initial='idle'
-        )
-        
-        # Triggers become methods on the model
-        my_obj.start()  # Transitions from idle to running
-    """
-    
-    def __init__(self, model, states, transitions, initial='initial'):
-        """
-        Initialize state machine with declarative configuration.
-        
-        Args:
-            model: Object that owns this state machine (callbacks are called on this object)
-            states: List of state names (strings)
-            transitions: List of transition dicts with keys:
-                - trigger: Name of the trigger method to create
-                - source: Source state name (or list of source states)
-                - dest: Destination state name
-                - before: (optional) Callback method name to call before transition
-                - after: (optional) Callback method name to call after transition
-                - noop: (optional) If True, accept trigger but perform no changes
-            initial: Name of the initial state (default: 'initial')
-        """
-        self.model = model
-        self.states = states
-        self.transitions = transitions
-        self.state = initial
-        
-        # Build transition lookup for quick access
-        self._transition_map = {}
-        for trans in transitions:
-            trigger = trans['trigger']
-            if trigger not in self._transition_map:
-                self._transition_map[trigger] = []
-            self._transition_map[trigger].append(trans)
-        
-        # Dynamically add trigger methods to the model
-        for trigger in self._transition_map.keys():
-            self._add_trigger(trigger)
-        
-        # Call on_enter for initial state
-        self._call_state_callback('on_enter', initial)
-    
-    def _add_trigger(self, trigger_name):
-        """
-        Dynamically add a trigger method to the model.
-        
-        Args:
-            trigger_name: Name of the trigger
-        """
-        def trigger_method(*args, **kwargs):
-            return self._execute_trigger(trigger_name, *args, **kwargs)
-        
-        # Add method to model instance
-        setattr(self.model, trigger_name, trigger_method)
-    
-    def _execute_trigger(self, trigger_name, *args, **kwargs):
-        """
-        Execute a trigger, causing a state transition if valid.
-        
-        Args:
-            trigger_name: Name of the trigger to execute
-            *args, **kwargs: Arguments passed to callback functions
-        
-        Returns:
-            bool: True if transition occurred, False otherwise
-        """
-        if trigger_name not in self._transition_map:
-            print(f"Warning: Trigger '{trigger_name}' not defined")
-            return False
-        
-        # Find valid transition from current state
-        valid_transition = None
-        for trans in self._transition_map[trigger_name]:
-            source = trans['source']
-            # Support single source or list of sources
-            sources = [source] if isinstance(source, str) else source
-            
-            if self.state in sources:
-                valid_transition = trans
-                break
-        
-        if not valid_transition:
-            print(f"Cannot trigger '{trigger_name}' from state '{self.state}'")
-            print(traceback.print_stack())
-            return False
-        
-        old_state = self.state
-        new_state = valid_transition['dest']
-
-        # Explicit no-op transition support:
-        # accept the trigger but do not call callbacks or change state.
-        if valid_transition.get('noop', False):
-            return True
-        
-        # Execute before callback if defined
-        if 'before' in valid_transition:
-            self._call_callback(valid_transition['before'], *args, **kwargs)
-        
-        # Exit old state
-        self._call_state_callback('on_exit', old_state)
-        
-        # Change state
-        self.state = new_state
-        
-        # Enter new state
-        self._call_state_callback('on_enter', new_state)
-        
-        # Execute after callback if defined
-        if 'after' in valid_transition:
-            self._call_callback(valid_transition['after'], *args, **kwargs)
-        
-        return True
-    
-    def _call_callback(self, callback_name, *args, **kwargs):
-        """
-        Call a callback method on the model if it exists.
-        
-        Args:
-            callback_name: Name of the callback method
-            *args, **kwargs: Arguments to pass to callback
-        """
-        if hasattr(self.model, callback_name):
-            callback = getattr(self.model, callback_name)
-            if callable(callback):
-                callback(*args, **kwargs)
-    
-    def _call_state_callback(self, callback_prefix, state_name):
-        """
-        Call a state-specific callback like on_enter_statename or on_exit_statename.
-        
-        Args:
-            callback_prefix: 'on_enter' or 'on_exit'
-            state_name: Name of the state
-        """
-        # Try specific callback like on_enter_normal
-        specific_callback = f"{callback_prefix}_{state_name}"
-        if hasattr(self.model, specific_callback):
-            callback = getattr(self.model, specific_callback)
-            if callable(callback):
-                callback()
-                return
-        
-        # Fall back to generic callback like on_enter with state as argument
-        if hasattr(self.model, callback_prefix):
-            callback = getattr(self.model, callback_prefix)
-            if callable(callback):
-                callback(state_name)
-    
-    def get_state(self):
-        """Get the current state name."""
-        return self.state
-    
-    def is_state(self, state_name):
-        """
-        Check if currently in a specific state.
-        
-        Args:
-            state_name: State name to check
-            
-        Returns:
-            bool: True if in that state
-        """
-        return self.state == state_name
 
 
 @singleton
 class VamCore:
     """
     Core singleton for VAM tool state management.
-    
-    Manages:
-    - State machine with Normal, Moving, RegisterSetup, and RegisterPicking states
-    - Shared transform settings (trs, axis, base)
-    - Provides interface for state transitions
-    
-    States and transitions are defined declaratively.
+
+    Implements minimal in-class state transitions without callback hooks.
     """
     
-    # State definitions
-    states = ['normal', 'moving', 'register_setup', 'register_picking']
-    
-    # Transition definitions
-    # Creates trigger methods: to_moving(), to_normal(), to_register_setup(), to_register_picking()
-    transitions = [
-        {'trigger': 'to_moving', 'source': 'normal', 'dest': 'moving', 'before': 'before_moving'},
-        {'trigger': 'to_normal', 'source': 'normal', 'dest': 'normal', 'noop': True},
-        {
-            'trigger': 'to_normal',
-            'source': ['moving', 'register_setup', 'register_picking'],
-            'dest': 'normal',
-            'before': 'before_normal',
-        },
-        {'trigger': 'to_register_setup', 'source': 'normal', 'dest': 'register_setup'},
-        {'trigger': 'to_register_picking', 'source': 'normal', 'dest': 'register_picking'},
-    ]
+    states = {'normal', 'moving', 'register_setup', 'register_picking'}
+    transitions = {
+        'to_moving': ({'normal'}, 'moving'),
+        'to_normal': ({'normal', 'moving', 'register_setup', 'register_picking'}, 'normal'),
+        'to_register_setup': ({'normal'}, 'register_setup'),
+        'to_register_picking': ({'normal'}, 'register_picking'),
+    }
+
+    # predefined command keys
+    # key: (key, ctl, alt, shft)
+    # value: command
+    command_keys = {
+        ('r', True, False, False): '',
+    }
     
     # Available transform modes
     trs_modes = ['translate', 'rotate', 'scale']
@@ -228,7 +35,7 @@ class VamCore:
     bases = ['screen', 'local', 'world']
     
     def __init__(self):
-        """Initialize VamCore with state machine and default settings."""
+        """Initialize VamCore with state and default settings."""
         # Transform settings - shared context across states
         self.trs = 'translate'
         self.axis = 'none'
@@ -236,168 +43,183 @@ class VamCore:
         
         # State-specific data
         self.moving_initial_values = {}
-        
-        # Initialize state machine with declarative configuration
-        # This will automatically create to_moving(), to_normal(), etc. methods
-        self.machine = StateMachine(
-            model=self,
-            states=self.states,
-            transitions=self.transitions,
-            initial='normal'
-        )
+        self.state = 'normal'
 
         self.register_manager = RegisterManager()
 
+        self.key_set = set()
         self.key_mapping = {}
+        self.init_key_set()
+        self.init_key_mapping()
 
-    def init_key_mapping(self):
+    def _transition(self, trigger_name):
+        """Execute a minimal state transition by trigger name."""
+        transition = self.transitions.get(trigger_name)
+        if not transition:
+            print(f"Warning: Trigger '{trigger_name}' not defined")
+            return False
+
+        source_states, destination = transition
+        if self.state not in source_states:
+            print(f"Cannot trigger '{trigger_name}' from state '{self.state}'")
+            return False
+
+        self.state = destination
+        return True
+
+    def init_key_set(self):
+        """Initialize supported hotkey names for VAM mapping."""
+        self.key_set.clear()
         for c in range(32, 127):
-            self.key_mapping[chr(c)] = []
+            self.key_set.add(chr(c))
 
         for f_n in range(1, 13):
-            self.key_mapping[f'f{f_n}'] = []
+            self.key_set.add(f'f{f_n}')
 
         special_keys = (
             'Up', 'Down', 'Left', 'Right',
             'Home', 'End', 'PageUp', 'PageDown', 'Insert',
             'Return', 'Space',
             'Tab',
+            'Escape',
             'Delete', 'Backspace',
         )
         for k in special_keys:
-            self.key_mapping[k] = []
-    
-    # State lifecycle callbacks
-    def on_enter_normal(self):
-        """Called when entering normal state."""
-        print("Entered NORMAL state - Selection mode active")
-    
-    def on_exit_normal(self):
-        """Called when exiting normal state."""
-        print("Exiting NORMAL state")
-    
-    def on_enter_moving(self):
-        """Called when entering moving state."""
-        print("Entered MOVING state - Transform mode active")
-        # Store initial transform values for potential reset
-        self.moving_initial_values = {}
-    
-    def on_exit_moving(self):
-        """Called when exiting moving state."""
-        print("Exiting MOVING state")
-        # Commit or cancel transform changes
-        self.moving_initial_values = {}
-    
-    def on_enter_register_picking(self):
-        """Called when entering register picking state."""
-        print("Entered REGISTER_PICKING state (not yet implemented)")
-    
-    def on_exit_register_picking(self):
-        """Called when exiting register picking state."""
-        print("Exiting REGISTER_PICKING state")
+            self.key_set.add(k)
 
-    def on_enter_register_setup(self):
-        """Called when entering register setup state (assign / use registers)."""
-        print("Entered REGISTER_SETUP state")
-
-    def on_exit_register_setup(self):
-        """Called when exiting register setup state."""
-        print("Exiting REGISTER_SETUP state")
-
-    # Transition callbacks
-    def before_moving(self):
-        """Called before transitioning to moving state."""
-        print("Preparing to enter moving mode...")
-    
-    def before_normal(self):
-        """Called before transitioning to normal state."""
-        print("Returning to normal mode...")
-    
-    # Event handlers
-    def handle_mouse_event(self, event):
+    def add_key_mapping(self, key, ctrl=False, alt=False, shft=False, command='', is_press=True):
         """
-        Handle mouse events based on current state.
-        
+        Add or update a hotkey mapping tracked by VamCore.
+
         Args:
-            event: Mouse event from Maya context
+            key (str): Maya hotkey key name.
+            ctrl (bool): Ctrl modifier.
+            alt (bool): Alt modifier.
+            shft (bool): Shift modifier.
+            command (str): Maya runtime command name.
+            is_press (bool): True for press command, False for release command.
         """
-        current_state = self.machine.get_state()
+        if key not in self.key_set:
+            raise ValueError(f'Unsupported key name: {key}')
 
-        handle_func = f'_handle_mouse_{current_state}'
-        if hasattr(self, handle_func):
-            getattr(self, handle_func)(event)
-        else:
-            print(f"No handler found for state: {current_state}")
-    
-    def handle_key_event(self, event):
+        key_name = (key, ctrl, alt, shft, is_press)
+        self.key_mapping[key_name] = command
+
+    def remove_key_mapping(self, key, ctrl=False, alt=False, shft=False, is_press=True):
+        """Remove a tracked hotkey mapping if present."""
+        key_name = (key, ctrl, alt, shft, is_press)
+        self.key_mapping.pop(key_name, None)
+
+    @staticmethod
+    def _modifier_kwargs(ctrl=False, alt=False, shft=False):
+        """Build Maya modifier kwargs from booleans."""
+        kwargs = {}
+        if ctrl:
+            kwargs['ctl'] = True
+        if alt:
+            kwargs['alt'] = True
+        if shft:
+            kwargs['sht'] = True
+        return kwargs
+
+    def register_hotkey(
+        self,
+        key,
+        command,
+        ctrl=False,
+        alt=False,
+        shft=False,
+        is_press=True,
+        context_name='vamToolContext',
+    ):
         """
-        Handle keyboard events based on current state.
-        
+        Register one hotkey in Maya and track it in key_mapping.
+
         Args:
-            event: Key event from Maya context
+            key (str): Maya hotkey key name.
+            command (str): Maya runtime command name.
+            ctrl (bool): Ctrl modifier.
+            alt (bool): Alt modifier.
+            shft (bool): Shift modifier.
+            is_press (bool): True for press command, False for release command.
+            context_name (str): Maya hotkey context name.
         """
-        current_state = self.machine.get_state()
-        
-        handle_func = f'_handle_key_{current_state}'
-        if hasattr(self, handle_func):
-            getattr(self, handle_func)(event)
+        self.add_key_mapping(
+            key=key,
+            ctrl=ctrl,
+            alt=alt,
+            shft=shft,
+            command=command,
+            is_press=is_press,
+        )
+
+        mod_kwargs = self._modifier_kwargs(ctrl=ctrl, alt=alt, shft=shft)
+        name_cmd = f"{command}NameCommand"
+        cmds.nameCommand(name_cmd, annotation=f"{command}", command=command)
+
+        if cmds.hotkey(key, q=True, **mod_kwargs):
+            cmds.hotkey(key, n='', rn='')
+
+        if is_press:
+            cmds.hotkey(
+                keyShortcut=key,
+                name=name_cmd,
+                ctxClient=context_name,
+                **mod_kwargs
+            )
         else:
-            print(f"No handler found for state: {current_state}")
-    
-    def update(self):
-        """Update current state."""
-        current_state = self.machine.get_state()
+            cmds.hotkey(
+                keyShortcut=key,
+                releaseName=name_cmd,
+                ctxClient=context_name,
+                **mod_kwargs
+            )
+
+        mod_desc = '+'.join(k for k, v in [('ctl', ctrl), ('alt', alt), ('sht', shft)] if v) or 'none'
+        press_release = 'press' if is_press else 'release'
+        print(f"Bound {key} (mods={mod_desc}, {press_release}) to {command} in {context_name}")
         
-        update_func = f'_update_{current_state}'
-        if hasattr(self, update_func):
-            getattr(self, update_func)()
-        else:
-            print(f"No update handler found for state: {current_state}")
-    
-    # Normal state handlers
-    def _handle_mouse_normal(self, event):
-        """Handle mouse events in normal state."""
-        # TODO: Implement controller selection logic
-        pass
-    
-    def _handle_key_normal(self, event):
-        """Handle keyboard events in normal state."""
-        # TODO: Implement keyboard shortcuts for selection
-        # TODO: Detect special keys that trigger Moving state transition
-        # Example: if special_key_pressed: self.to_moving()
-        pass
-    
-    def _update_normal(self):
-        """Update normal state."""
-        pass
-    
-    # Moving state handlers
-    def _handle_mouse_moving(self, event):
-        """Handle mouse events in moving state."""
-        # TODO: Calculate transform based on mouse position and current settings
-        # TODO: Apply transform preview (non-committed)
-        pass
-    
-    def _handle_key_moving(self, event):
-        """Handle keyboard events in moving state."""
-        # TODO: Implement key mappings for transform parameters
-        # TODO: Detect exit key to return to Normal state
-        # Example: if escape_pressed: self.to_normal()
-        pass
-    
-    def _update_moving(self):
-        """Update moving state."""
-        # TODO: Continuously update transform preview
-        pass
+
+    def init_key_mapping(self):
+        """Initialize default hotkey mappings."""
+        self.key_mapping.clear()
+        self.add_key_mapping('w', command='vamToMoving')
+        self.add_key_mapping('Escape', command='vamToNormal')
+        self.add_key_mapping('g', command='vamSetTranslate')
+        self.add_key_mapping('r', command='vamSetRotate')
+        self.add_key_mapping('r', ctrl=True, command='vamToRegisterSetup')
+        self.add_key_mapping('s', command='vamSetScale')
+        self.add_key_mapping('x', command='vamSetAxisX')
+        self.add_key_mapping('y', command='vamSetAxisY')
+        self.add_key_mapping('z', command='vamSetAxisZ')
+        self.add_key_mapping('Tab', command='vamCycleBase')
+
+    def get_key_bindings(self):
+        """
+        Convert tracked key mappings to the tuple format used by Maya registration.
+
+        Returns:
+            list[tuple[str, str, bool, dict]]
+        """
+        bindings = []
+        for key_data, command in self.key_mapping.items():
+            key, ctrl, alt, shft, is_press = key_data
+            bindings.append(
+                (
+                    key,
+                    command,
+                    is_press,
+                    {'ctl': ctrl, 'alt': alt, 'sht': shft},
+                )
+            )
+        return bindings
     
     def handle_register_key(self, register_key):
         """
         Hotkey entry for a register key. RegisterManager only binds the key;
         this method applies state-specific behavior (e.g. recall selection).
         """
-        if self.machine.get_state() == 'register_setup':
-            import maya.cmds as cmds
-
+        if self.state == 'register_setup':
             objects = self.register_manager.get_register_objects(register_key)
             if objects:
                 cmds.select(*objects, replace=True)
@@ -405,52 +227,10 @@ class VamCore:
             # Default when not in a register-aware state (extended later).
             pass
 
-    # Register setup state handlers (stubs)
-    def _handle_mouse_register_setup(self, event):
-        """Handle mouse events in register setup state."""
-        pass
-
-    def _handle_key_register_setup(self, event):
-        """Handle keyboard events in register setup state."""
-        pass
-
-    def _update_register_setup(self):
-        """Update register setup state."""
-        pass
-
-    # Register picking state handlers (stubs)
-    def _handle_mouse_register_picking(self, event):
-        """Handle mouse events in register picking state."""
-        pass
-    
-    def _handle_key_register_picking(self, event):
-        """Handle keyboard events in register picking state."""
-        pass
-    
-    def _update_register_picking(self):
-        """Update register picking state."""
-        pass
-    
     # Query methods
     def get_current_state(self):
         """Get the name of the current state."""
-        return self.machine.get_state()
-    
-    def is_normal(self):
-        """Check if in normal state."""
-        return self.machine.is_state('normal')
-    
-    def is_moving(self):
-        """Check if in moving state."""
-        return self.machine.is_state('moving')
-    
-    def is_register_picking(self):
-        """Check if in register picking state."""
-        return self.machine.is_state('register_picking')
-
-    def is_register_setup(self):
-        """Check if in register setup state."""
-        return self.machine.is_state('register_setup')
+        return self.state
 
 
 if __name__ == '__main__':
@@ -459,18 +239,3 @@ if __name__ == '__main__':
     print(f"Initial state: {vam_core.get_current_state()}")
     print()
     
-    # Test transitions - these methods are created dynamically by StateMachine
-    print("Testing transition to moving state:")
-    vam_core.to_moving()
-    print(f"Current state: {vam_core.get_current_state()}")
-    print()
-    
-    print("Testing transition back to normal state:")
-    vam_core.to_normal()
-    print(f"Current state: {vam_core.get_current_state()}")
-    print()
-    
-    # Test invalid transition
-    print("Testing invalid transition (moving from normal to register_picking):")
-    vam_core.to_register_picking()
-    print(f"Current state: {vam_core.get_current_state()}")

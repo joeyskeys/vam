@@ -248,11 +248,10 @@ def create_vam_commands():
 
 def create_vam_hotkey_context():
     """
-    Create a custom hotkey context for VAM tool (bindings, modelPanel association).
+    Create a custom hotkey context for VAM tool.
 
-    The VAM hotkey set itself is not created or switched here; that is a
-    persisting preference and is handled when the VAM tool activates
-    (see begin_vam_tool_hotkey_set).
+    This function only creates/associates the context and does not register
+    key bindings. Use register_vam_hotkey_bindings for key registration.
     """
     # Same for context
     if not cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True):
@@ -264,85 +263,29 @@ def create_vam_hotkey_context():
     cmds.hotkeyCtx(t=VAM_HOTKEY_CONTEXT, ac='modelPanel')
     print(f"Associated {VAM_HOTKEY_CONTEXT} with modelPanel (3D viewports)")
     
-    # Define key bindings for VAM tool
-    # Format: (key, command_name, is_press, modifier_flags)
-    # modifier_flags: optional ctl / alt / sht (Maya hotkey flags)
-    key_bindings = [
-        # State transitions
-        ('w', 'vamToMoving', True, {}),
-        ('Escape', 'vamToNormal', True, {}),
-        
-        # Transform modes (when in moving state)
-        ('g', 'vamSetTranslate', True, {}),
-        ('r', 'vamSetRotate', True, {}),
-        ('r', 'vamToRegisterSetup', True, {'ctl': True}),
-        ('s', 'vamSetScale', True, {}),
-        
-        # Axis constraints
-        ('x', 'vamSetAxisX', True, {}),
-        ('y', 'vamSetAxisY', True, {}),
-        ('z', 'vamSetAxisZ', True, {}),
-        
-        # Base space
-        ('Tab', 'vamCycleBase', True, {}),
-    ]
+def register_vam_hotkey_bindings(key_bindings):
+    """
+    Register hotkey bindings into VAM hotkey context.
 
-    # There's no key pressing handling event in MPxContext
-    # If no corresponding key is registered, tool will exit immediately
-    # So the keymap management should start here directly
-    # Management should be done in VamCore, leave the maya related logic
-    # here. Should cover all keys including those currently don't have
-    # mappings.
-
-    def _modifier_kwargs(flags):
-        kwargs = {}
-        if flags.get('ctl'):
-            kwargs['ctl'] = True
-        if flags.get('alt'):
-            kwargs['alt'] = True
-        if flags.get('sht'):
-            kwargs['sht'] = True
-        return kwargs
-    
+    Args:
+        key_bindings (list[tuple[str, str, bool, dict]]): Hotkey definitions
+            in the format (key, command_name, is_press, modifier_flags).
+    """
+    # There's no key pressing handling event in MPxContext.
+    # If no corresponding key is registered, tool will exit immediately.
+    # Use VamCore single-key registration so runtime updates and initial setup
+    # both go through the same code path.
+    vam_core = VamCore()
     for key, command_name, is_press, mod_flags in key_bindings:
-        mod_kwargs = _modifier_kwargs(mod_flags)
-        # Create name command if it doesn't exist
-        name_cmd = f"{command_name}NameCommand"
-        cmds.nameCommand(name_cmd, annotation=f"{command_name}", command=command_name)
-        
-        # Bind to hotkey in VAM context
-        press_release = 'press' if is_press else 'release'
-        
-        # Delete existing binding if present
-        try:
-            cmds.hotkey(
-                keyShortcut=key,
-                name='',  # Clear binding
-                releaseName='',
-                ctxClient=VAM_HOTKEY_CONTEXT,
-                **mod_kwargs
-            )
-        except Exception:
-            pass
-        
-        # Create new binding
-        if is_press:
-            cmds.hotkey(
-                keyShortcut=key,
-                name=name_cmd,
-                ctxClient=VAM_HOTKEY_CONTEXT,
-                **mod_kwargs
-            )
-        else:
-            cmds.hotkey(
-                keyShortcut=key,
-                releaseName=name_cmd,
-                ctxClient=VAM_HOTKEY_CONTEXT,
-                **mod_kwargs
-            )
-        
-        mod_desc = '+'.join(k for k, v in mod_flags.items() if v) or 'none'
-        print(f"Bound {key} (mods={mod_desc}, {press_release}) to {command_name} in {VAM_HOTKEY_CONTEXT}")
+        vam_core.register_hotkey(
+            key=key,
+            command=command_name,
+            ctrl=bool(mod_flags.get('ctl')),
+            alt=bool(mod_flags.get('alt')),
+            shft=bool(mod_flags.get('sht')),
+            is_press=is_press,
+            context_name=VAM_HOTKEY_CONTEXT,
+        )
 
 
 def activate_vam_hotkey_context():
@@ -384,11 +327,15 @@ def deactivate_vam_hotkey_context():
     print(f"Deactivated hotkey context, returned to Global")
 
 
-def setup_vam_hotkeys():
+def setup_vam_hotkeys(key_bindings):
     """
     Complete setup for VAM commands and hotkeys.
     
     Call this during initialization (e.g., in userSetup.py).
+
+    Args:
+        key_bindings (list[tuple[str, str, bool, dict]]): Hotkey definitions
+            in the format (key, command_name, is_press, modifier_flags).
     """
     print("\n" + "="*60)
     print("Setting up VAM commands and hotkeys...")
@@ -396,6 +343,7 @@ def setup_vam_hotkeys():
     
     create_vam_commands()
     create_vam_hotkey_context()
+    register_vam_hotkey_bindings(key_bindings)
     
     print("="*60)
     print("VAM hotkey setup complete!")
@@ -419,4 +367,16 @@ def is_vam_context_active():
 
 if __name__ == '__main__':
     # Test setup
-    setup_vam_hotkeys()
+    TEST_KEY_BINDINGS = [
+        ('w', 'vamToMoving', True, {}),
+        ('Escape', 'vamToNormal', True, {}),
+        ('g', 'vamSetTranslate', True, {}),
+        ('r', 'vamSetRotate', True, {}),
+        ('r', 'vamToRegisterSetup', True, {'ctl': True}),
+        ('s', 'vamSetScale', True, {}),
+        ('x', 'vamSetAxisX', True, {}),
+        ('y', 'vamSetAxisY', True, {}),
+        ('z', 'vamSetAxisZ', True, {}),
+        ('Tab', 'vamCycleBase', True, {}),
+    ]
+    setup_vam_hotkeys(TEST_KEY_BINDINGS)

@@ -19,7 +19,9 @@ def initialize_vam():
         # Setup VAM commands and hotkey context
         try:
             from vam_commands import setup_vam_hotkeys
-            setup_vam_hotkeys()
+            from core import VamCore
+            key_bindings = VamCore().get_key_bindings()
+            setup_vam_hotkeys(key_bindings)
         except Exception as e:
             print("Warning: Failed to setup VAM hotkeys:")
             print(traceback.format_exc())

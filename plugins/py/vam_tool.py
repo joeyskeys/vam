@@ -46,10 +46,36 @@ class VamContext(omui.MPxContext):
         # Get VamCore singleton instance
         self.vam_core = core.VamCore()
 
+    def _refresh_state_display(self, state_name):
+        """Update tool title/help and mark MToolsInfo as dirty."""
+        self.setTitleString(f"VAM - Vim-like Animation Tool [{state_name}]")
+        try:
+            self.setHelpString(f"VAM state: {state_name}")
+        except Exception:
+            pass
+
+        # Request Maya to refresh tool info UI.
+        try:
+            omui.MToolsInfo.setDirtyFlag()
+        except TypeError:
+            # Some Maya versions expose this with a boolean argument.
+            omui.MToolsInfo.setDirtyFlag(True)
+        except Exception:
+            pass
+
+    def _on_state_changed(self, old_state, new_state, trigger_name):
+        """Keep UI state display in sync with VamCore transitions."""
+        self._refresh_state_display(new_state)
+
     def toolOnSetup(self, event):
         """Called when tool becomes active."""
         print("VAM Tool Active")
-        om.MGlobal.displayInfo("VAM: Modal tool active. Press 'q' or 'Esc' to exit.")
+        current_state = self.vam_core.get_current_state()
+        self.vam_core.add_state_change_listener(self._on_state_changed)
+        self._refresh_state_display(current_state)
+        om.MGlobal.displayInfo(
+            f"VAM: Modal tool active. State={current_state}. Press 'q' or 'Esc' to exit."
+        )
         
         if HOTKEY_CONTEXT_AVAILABLE:
             self._vam_prev_hotkey_set = begin_vam_tool_hotkey_set()
@@ -60,6 +86,7 @@ class VamContext(omui.MPxContext):
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
+        self.vam_core.remove_state_change_listener(self._on_state_changed)
         
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
@@ -72,7 +99,7 @@ class VamContext(omui.MPxContext):
         Forward to state machine for processing by current state.
         """
         # Forward event to state machine
-        self.vam_core.handle_mouse_event(event)
+        pass
     
     def doRelease(self, event, drawMgr, frameContext):
         """
@@ -81,7 +108,7 @@ class VamContext(omui.MPxContext):
         Forward to state machine for processing by current state.
         """
         # Forward event to state machine
-        self.vam_core.handle_mouse_event(event)
+        pass
     
     def doDrag(self, event, drawMgr, frameContext):
         """
@@ -90,7 +117,7 @@ class VamContext(omui.MPxContext):
         Forward to state machine for processing by current state.
         """
         # Forward event to state machine
-        self.vam_core.handle_mouse_event(event)
+        pass
         
 
 class VamContextCmd(omui.MPxContextCommand):
