@@ -16,91 +16,75 @@ import maya.mel as mel
 from core import VamCore
 
 
-# ============================================================================
-# Command Functions - These will be bound to nameCommands
-# ============================================================================
-
-def vam_to_moving():
-    """Transition to moving state."""
+def _handle_state_switch(key):
     vam_core = VamCore()
-    vam_core.to_moving()
+    if key == 'w':
+        vam_core.to_moving()
+        return True
+    if key == 'Escape':
+        vam_core.to_normal()
+        return True
+    if key == 'g':
+        vam_core.trs = 'translate'
+        return True
+    if key == 'r':
+        vam_core.trs = 'rotate'
+        return True
+    if key == 's':
+        vam_core.trs = 'scale'
+        return True
+    return False
 
 
-def vam_to_normal():
-    """Transition to normal state."""
+def _handle_axis_setup(key):
+    if key not in ('x', 'y', 'z'):
+        return False
+    VamCore().axis = key
+    return True
+
+
+def _handle_base_cycle(key):
+    if key != 'Tab':
+        return False
     vam_core = VamCore()
-    vam_core.to_normal()
+    bases = vam_core.bases
+    vam_core.base = bases[(bases.index(vam_core.base) + 1) % len(bases)]
+    return True
 
 
-def vam_to_register_picking():
-    """Transition to register picking state."""
+def _handle_register_setup(key):
     vam_core = VamCore()
-    vam_core.to_register_picking()
+    if vam_core.state != 'register_setup':
+        return False
+    vam_core.register_manager.set_register_from_selection(key)
+    return True
 
 
-def vam_to_register_setup():
-    """Transition to register setup state (Ctrl+R)."""
+def _handle_register_picking(key):
     vam_core = VamCore()
-    vam_core.to_register_setup()
+    if vam_core.state != 'register_picking':
+        return False
+    objects = vam_core.register_manager.get_register_objects(key)
+    if objects:
+        cmds.select(*objects, replace=True)
+    return True
 
 
-def vam_set_translate():
-    """Set transform mode to translate."""
-    vam_core = VamCore()
-    vam_core.trs = 'translate'
-    print(f"Transform mode: translate")
+def vam_handle_key_press(key):
+    if _handle_state_switch(key):
+        return
 
+    if _handle_axis_setup(key):
+        return
+    
+    if _handle_base_cycle(key):
+        return
 
-def vam_set_rotate():
-    """Set transform mode to rotate."""
-    vam_core = VamCore()
-    vam_core.trs = 'rotate'
-    print(f"Transform mode: rotate")
+    if _handle_register_setup(key):
+        return
 
-
-def vam_set_scale():
-    """Set transform mode to scale."""
-    vam_core = VamCore()
-    vam_core.trs = 'scale'
-    print(f"Transform mode: scale")
-
-
-def vam_set_axis_x():
-    """Constrain to X axis."""
-    vam_core = VamCore()
-    vam_core.axis = 'x'
-    print(f"Axis constraint: X")
-
-
-def vam_set_axis_y():
-    """Constrain to Y axis."""
-    vam_core = VamCore()
-    vam_core.axis = 'y'
-    print(f"Axis constraint: Y")
-
-
-def vam_set_axis_z():
-    """Constrain to Z axis."""
-    vam_core = VamCore()
-    vam_core.axis = 'z'
-    print(f"Axis constraint: Z")
-
-
-def vam_set_axis_none():
-    """Remove axis constraint."""
-    vam_core = VamCore()
-    vam_core.axis = 'none'
-    print(f"Axis constraint: None")
-
-
-def vam_cycle_base():
-    """Cycle through base spaces: screen -> local -> world."""
-    vam_core = VamCore()
-    bases = ['screen', 'local', 'world']
-    current_idx = bases.index(vam_core.base)
-    next_idx = (current_idx + 1) % len(bases)
-    vam_core.base = bases[next_idx]
-    print(f"Base space: {vam_core.base}")
+    if _handle_register_picking(key):
+        return
 
 
 # ============================================================================
@@ -109,6 +93,7 @@ def vam_cycle_base():
 
 VAM_HOTKEY_SET = "vamToolSet"
 VAM_HOTKEY_CONTEXT = "vamToolContext"
+VAM_HANDLE_KEY_PRESS_COMMAND = "vamHandleKeyPress"
 
 
 def begin_vam_tool_hotkey_set():
@@ -155,78 +140,11 @@ def create_vam_commands():
     They can then be assigned to keys via nameCommand.
     """
     commands = [
-        # State transitions
         {
-            'name': 'vamToMoving',
-            'annotation': 'VAM: Enter moving state',
+            'name': VAM_HANDLE_KEY_PRESS_COMMAND,
+            'annotation': 'VAM: Unified key press entry',
             'category': 'VAM',
-            'command': 'from vam_commands import vam_to_moving; vam_to_moving()'
-        },
-        {
-            'name': 'vamToNormal',
-            'annotation': 'VAM: Return to normal state',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_to_normal; vam_to_normal()'
-        },
-        {
-            'name': 'vamToRegisterPicking',
-            'annotation': 'VAM: Enter register picking state',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_to_register_picking; vam_to_register_picking()'
-        },
-        {
-            'name': 'vamToRegisterSetup',
-            'annotation': 'VAM: Enter register setup state (Ctrl+R)',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_to_register_setup; vam_to_register_setup()'
-        },
-        
-        # Transform modes
-        {
-            'name': 'vamSetTranslate',
-            'annotation': 'VAM: Set translate mode',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_translate; vam_set_translate()'
-        },
-        {
-            'name': 'vamSetRotate',
-            'annotation': 'VAM: Set rotate mode',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_rotate; vam_set_rotate()'
-        },
-        {
-            'name': 'vamSetScale',
-            'annotation': 'VAM: Set scale mode',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_scale; vam_set_scale()'
-        },
-        
-        # Axis constraints
-        {
-            'name': 'vamSetAxisX',
-            'annotation': 'VAM: Constrain to X axis',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_axis_x; vam_set_axis_x()'
-        },
-        {
-            'name': 'vamSetAxisY',
-            'annotation': 'VAM: Constrain to Y axis',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_axis_y; vam_set_axis_y()'
-        },
-        {
-            'name': 'vamSetAxisZ',
-            'annotation': 'VAM: Constrain to Z axis',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_set_axis_z; vam_set_axis_z()'
-        },
-        
-        # Base space
-        {
-            'name': 'vamCycleBase',
-            'annotation': 'VAM: Cycle base space (screen/local/world)',
-            'category': 'VAM',
-            'command': 'from vam_commands import vam_cycle_base; vam_cycle_base()'
+            'command': "from vam_commands import vam_handle_key_press; vam_handle_key_press('')",
         },
     ]
     

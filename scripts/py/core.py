@@ -179,20 +179,30 @@ class VamCore:
         press_release = 'press' if is_press else 'release'
         print(f"Bound {key} (mods={mod_desc}, {press_release}) to {command} in {context_name}")
         
-
     def init_key_mapping(self):
         """Initialize default hotkey mappings."""
         self.key_mapping.clear()
-        self.add_key_mapping('w', command='vamToMoving')
-        self.add_key_mapping('Escape', command='vamToNormal')
-        self.add_key_mapping('g', command='vamSetTranslate')
-        self.add_key_mapping('r', command='vamSetRotate')
-        self.add_key_mapping('r', ctrl=True, command='vamToRegisterSetup')
-        self.add_key_mapping('s', command='vamSetScale')
-        self.add_key_mapping('x', command='vamSetAxisX')
-        self.add_key_mapping('y', command='vamSetAxisY')
-        self.add_key_mapping('z', command='vamSetAxisZ')
-        self.add_key_mapping('Tab', command='vamCycleBase')
+        from vam_commands import VAM_HANDLE_KEY_PRESS_COMMAND
+
+        modifier_combinations = (
+            (False, False, False),
+            (True, False, False),
+            (False, True, False),
+            (False, False, True),
+            (True, True, False),
+            (True, False, True),
+            (False, True, True),
+            (True, True, True),
+        )
+        for key in self.key_set:
+            for ctrl, alt, shft in modifier_combinations:
+                self.add_key_mapping(
+                    key=key,
+                    ctrl=ctrl,
+                    alt=alt,
+                    shft=shft,
+                    command=VAM_HANDLE_KEY_PRESS_COMMAND,
+                )
 
     def get_key_bindings(self):
         """
