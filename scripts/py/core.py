@@ -14,21 +14,16 @@ class VamCore:
     Implements minimal in-class state transitions without callback hooks.
     """
     
-    states = {'normal', 'moving', 'register_setup', 'register_picking'}
+    states = {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'}
     transitions = {
-        'to_moving': ({'normal'}, 'moving'),
+        'to_translate': ({'normal'}, 'translate'),
+        'to_rotate': ({'normal'}, 'rotate'),
+        'to_scale': ({'normal'}, 'scale'),
         'to_normal': ({'normal', 'moving', 'register_setup', 'register_picking'}, 'normal'),
         'to_register_setup': ({'normal'}, 'register_setup'),
         'to_register_picking': ({'normal'}, 'register_picking'),
     }
 
-    # predefined command keys
-    # key: (key, ctl, alt, shft)
-    # value: command
-    command_keys = {
-        ('r', True, False, False): '',
-    }
-    
     # Available transform modes
     trs_modes = ['translate', 'rotate', 'scale']
     axes = ['none', 'x', 'y', 'z']
