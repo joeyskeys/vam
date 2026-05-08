@@ -16,30 +16,55 @@ import maya.mel as mel
 from core import VamCore
 
 
-def _handle_state_switch(key):
+def _build_runtime_command_name(base_name, key, is_press, mod_flags):
+    """Build a deterministic, Maya-safe runtime command name per binding."""
+    key_token = ''.join(ch if ch.isalnum() else '_' for ch in str(key)).strip('_') or 'key'
+    mod_token = ''.join(k for k in ('ctl', 'alt', 'sht') if mod_flags.get(k)) or 'none'
+    press_token = 'press' if is_press else 'release'
+    return f"{base_name}_{key_token}_{mod_token}_{press_token}"
+
+
+def _is_shortcut_match(shortcut, key, mod_flags, is_press):
+    """Return True if incoming key event matches transition shortcut config."""
+    mod_flags = mod_flags or {}
+    return (
+        shortcut.get('key') == key
+        and bool(shortcut.get('ctl')) == bool(mod_flags.get('ctl'))
+        and bool(shortcut.get('alt')) == bool(mod_flags.get('alt'))
+        and bool(shortcut.get('sht')) == bool(mod_flags.get('sht'))
+        and bool(shortcut.get('is_press', True)) == bool(is_press)
+    )
+
+
+def _handle_state_switch(key, mod_flags=None, is_press=True):
     vam_core = VamCore()
-    if key == 'w':
-        vam_core.to_moving()
-        return True
-    if key == 'Escape':
-        vam_core.to_normal()
-        return True
-    if key == 'g':
-        vam_core.trs = 'translate'
-        return True
-    if key == 'r':
-        vam_core.trs = 'rotate'
-        return True
-    if key == 's':
-        vam_core.trs = 'scale'
-        return True
+    mod_flags = mod_flags or {}
+
+    for trigger_name, transition in vam_core.transitions.items():
+        if not isinstance(transition, dict):
+            continue
+
+        for shortcut in transition.get('shortcuts', ()):
+            if not _is_shortcut_match(shortcut, key, mod_flags, is_press):
+                continue
+
+            for attr_name, attr_value in transition.get('updates', {}).items():
+                setattr(vam_core, attr_name, attr_value)
+
+            return vam_core._transition(trigger_name)
+
     return False
 
 
 def _handle_axis_setup(key):
-    if key not in ('x', 'y', 'z'):
+    vam_core = VamCore()
+    if not key:
         return False
-    VamCore().axis = key
+
+    if key not in vam_core.axes:
+        return False
+
+    vam_core.axis = key
     return True
 
 
@@ -70,8 +95,8 @@ def _handle_register_picking(key):
     return True
 
 
-def vam_handle_key_press(key):
-    if _handle_state_switch(key):
+def vam_handle_key_press(key, mod_flags=None, is_press=True):
+    if _handle_state_switch(key, mod_flags=mod_flags, is_press=is_press):
         return
 
     if _handle_axis_setup(key):
@@ -132,23 +157,51 @@ def restore_vam_tool_hotkey_set(previous_set_name):
     print('restored hotkey set:', previous_set_name)
 
 
-def create_vam_commands():
+def create_vam_commands(key_bindings):
     """
     Create runtime commands that can be bound to hotkeys.
     
     These commands are registered with Maya's command system using runTimeCommand.
     They can then be assigned to keys via nameCommand.
+
+    Args:
+        key_bindings (list[tuple[str, str, bool, dict]]): Hotkey definitions
+            in the format (key, command_name, is_press, modifier_flags).
+
+    Returns:
+        list[tuple[str, str, bool, dict]]: Bindings with generated runtime
+            command names for each specific key/modifier combination.
     """
-    commands = [
-        {
-            'name': VAM_HANDLE_KEY_PRESS_COMMAND,
-            'annotation': 'VAM: Unified key press entry',
-            'category': 'VAM',
-            'command': "from vam_commands import vam_handle_key_press; vam_handle_key_press('')",
-        },
-    ]
-    
-    for cmd in commands:
+    command_template = {
+        'name': VAM_HANDLE_KEY_PRESS_COMMAND,
+        'annotation': 'VAM: Unified key press entry',
+        'category': 'VAM',
+        'command': "from vam_commands import vam_handle_key_press; vam_handle_key_press({!r}, {!r}, {!r})",
+    }
+
+    generated_bindings = []
+    seen_command_names = set()
+
+    for key, _command_name, is_press, mod_flags in key_bindings:
+        generated_name = _build_runtime_command_name(
+            base_name=command_template['name'],
+            key=key,
+            is_press=is_press,
+            mod_flags=mod_flags,
+        )
+
+        if generated_name in seen_command_names:
+            generated_bindings.append((key, generated_name, is_press, mod_flags))
+            continue
+
+        cmd = dict(command_template)
+        cmd['name'] = generated_name
+        cmd['annotation'] = (
+            f"VAM: key={key}, mods={mod_flags}, "
+            f"type={'press' if is_press else 'release'}"
+        )
+        cmd['command'] = command_template['command'].format(key, mod_flags, is_press)
+
         # Delete if exists
         if cmds.runTimeCommand(cmd['name'], exists=True):
             cmds.runTimeCommand(cmd['name'], edit=True, delete=True)
@@ -162,6 +215,10 @@ def create_vam_commands():
         )
         
         print(f"Created runtime command: {cmd['name']}")
+        seen_command_names.add(generated_name)
+        generated_bindings.append((key, generated_name, is_press, mod_flags))
+
+    return generated_bindings
 
 
 def create_vam_hotkey_context():
@@ -259,7 +316,7 @@ def setup_vam_hotkeys(key_bindings):
     print("Setting up VAM commands and hotkeys...")
     print("="*60)
     
-    create_vam_commands()
+    key_bindings = create_vam_commands(key_bindings)
     create_vam_hotkey_context()
     register_vam_hotkey_bindings(key_bindings)
     

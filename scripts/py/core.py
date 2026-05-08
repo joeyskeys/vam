@@ -16,12 +16,53 @@ class VamCore:
     
     states = {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'}
     transitions = {
-        'to_translate': ({'normal'}, 'translate'),
-        'to_rotate': ({'normal'}, 'rotate'),
-        'to_scale': ({'normal'}, 'scale'),
-        'to_normal': ({'normal', 'moving', 'register_setup', 'register_picking'}, 'normal'),
-        'to_register_setup': ({'normal'}, 'register_setup'),
-        'to_register_picking': ({'normal'}, 'register_picking'),
+        'to_translate': {
+            'source': {'normal'},
+            'destination': 'translate',
+            'shortcuts': (
+                {'key': 'w', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                {'key': 'g', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {'trs': 'translate'},
+        },
+        'to_rotate': {
+            'source': {'normal'},
+            'destination': 'rotate',
+            'shortcuts': (
+                {'key': 'r', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {'trs': 'rotate'},
+        },
+        'to_scale': {
+            'source': {'normal'},
+            'destination': 'scale',
+            'shortcuts': (
+                {'key': 's', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {'trs': 'scale'},
+        },
+        'to_normal': {
+            'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'},
+            'destination': 'normal',
+            'shortcuts': (
+                {'key': 'Escape', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {},
+        },
+        'to_register_setup': {
+            'source': {'normal'},
+            'destination': 'register_setup',
+            'shortcuts': (
+                {'key': 'r', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {},
+        },
+        'to_register_picking': {
+            'source': {'normal'},
+            'destination': 'register_picking',
+            'shortcuts': (),
+            'updates': {},
+        },
     }
 
     # Available transform modes
@@ -54,7 +95,9 @@ class VamCore:
             print(f"Warning: Trigger '{trigger_name}' not defined")
             return False
 
-        source_states, destination = transition
+        source_states = transition.get('source', set())
+        destination = transition.get('destination')
+
         if self.state not in source_states:
             print(f"Cannot trigger '{trigger_name}' from state '{self.state}'")
             return False
