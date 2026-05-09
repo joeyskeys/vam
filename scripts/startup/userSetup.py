@@ -9,19 +9,21 @@ import os
 from importlib import reload
 
 
-from tools import basic_test
-reload(basic_test)
-
 def initialize_vam():
     try:
         print("vam initializing...")
 
         # Setup VAM commands and hotkey context
         try:
-            from vam_commands import setup_vam_hotkeys
+            from vam_commands import setup_vam_hotkeys, begin_vam_tool_hotkey_set, restore_vam_tool_hotkey_set
             from core import VamCore
+
+            # ensure the hotkey set is set to the vam tool set
+            previous_hotkey_set = begin_vam_tool_hotkey_set()
             key_bindings = VamCore().get_key_bindings()
             setup_vam_hotkeys(key_bindings)
+            restore_vam_tool_hotkey_set(previous_hotkey_set)
+
         except Exception as e:
             print("Warning: Failed to setup VAM hotkeys:")
             print(traceback.format_exc())

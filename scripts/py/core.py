@@ -108,7 +108,7 @@ class VamCore:
     def init_key_set(self):
         """Initialize supported hotkey names for VAM mapping."""
         self.key_set.clear()
-        for c in range(32, 127):
+        for c in range(ord('a'), ord('z') + 1):
             self.key_set.add(chr(c))
 
         for f_n in range(1, 13):
@@ -195,8 +195,9 @@ class VamCore:
         name_cmd = f"{command}NameCommand"
         cmds.nameCommand(name_cmd, annotation=f"{command}", command=command)
 
+        print('handling key:', key)
         if cmds.hotkey(key, q=True, **mod_kwargs):
-            cmds.hotkey(key, n='', rn='')
+            cmds.hotkey(k=key, n='', rn='')
 
         if is_press:
             cmds.hotkey(
@@ -260,7 +261,81 @@ class VamCore:
                     {'ctl': ctrl, 'alt': alt, 'sht': shft},
                 )
             )
+        print('bindings', bindings)
         return bindings
+
+    @staticmethod
+    def _list_runtime_commands():
+        """Return runtime command names with Maya-version compatible queries."""
+        query_flags = (
+            {'userCommandArray': True},
+            {'commandArray': True},
+        )
+        for flags in query_flags:
+            try:
+                commands = cmds.runTimeCommand(query=True, **flags)
+            except TypeError:
+                continue
+            if commands:
+                return list(commands)
+        return []
+
+    def delete_commands_by_category(self, category):
+        """
+        Delete runtime commands and paired NameCommands for a category.
+
+        The NameCommand deletion follows this project's naming convention:
+        ``<runtimeCommandName>NameCommand``.
+
+        Args:
+            category (str): Maya runtime command category (for example: ``VAM``).
+
+        Returns:
+            dict: Deleted command names:
+                {
+                    'runtime_commands': [...],
+                    'name_commands': [...],
+                }
+        """
+        if not isinstance(category, str) or not category.strip():
+            raise ValueError('category must be a non-empty string')
+        category = category.strip()
+
+        deleted = {
+            'runtime_commands': [],
+            'name_commands': [],
+        }
+
+        runtime_commands = self._list_runtime_commands()
+        for runtime_name in runtime_commands:
+            try:
+                runtime_category = cmds.runTimeCommand(runtime_name, query=True, category=True)
+            except Exception:
+                continue
+
+            if runtime_category != category:
+                continue
+
+            name_cmd = f"{runtime_name}NameCommand"
+            if cmds.nameCommand(name_cmd, exists=True):
+                try:
+                    cmds.nameCommand(name_cmd, edit=True, delete=True)
+                    deleted['name_commands'].append(name_cmd)
+                except Exception:
+                    pass
+
+            if cmds.runTimeCommand(runtime_name, exists=True):
+                try:
+                    cmds.runTimeCommand(runtime_name, edit=True, delete=True)
+                    deleted['runtime_commands'].append(runtime_name)
+                except Exception:
+                    pass
+
+        print(
+            f"Deleted {len(deleted['runtime_commands'])} runtime commands and "
+            f"{len(deleted['name_commands'])} name commands from category '{category}'."
+        )
+        return deleted
     
     def handle_register_key(self, register_key):
         """

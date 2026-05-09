@@ -46,7 +46,7 @@ class VamContext(omui.MPxContext):
         # Get VamCore singleton instance
         self.vam_core = core.VamCore()
 
-    def _refresh_state_display(self, state_name):
+    def _refresh_state_display(self, old_state, state_name, trigger_name):
         """Update tool title/help and mark MToolsInfo as dirty."""
         self.setTitleString(f"VAM - Vim-like Animation Tool [{state_name}]")
         try:
@@ -63,16 +63,11 @@ class VamContext(omui.MPxContext):
         except Exception:
             pass
 
-    def _on_state_changed(self, old_state, new_state, trigger_name):
-        """Keep UI state display in sync with VamCore transitions."""
-        self._refresh_state_display(new_state)
-
     def toolOnSetup(self, event):
         """Called when tool becomes active."""
         print("VAM Tool Active")
         current_state = self.vam_core.get_current_state()
-        self.vam_core.add_state_change_listener(self._on_state_changed)
-        self._refresh_state_display(current_state)
+        self._refresh_state_display('', current_state, '')
         om.MGlobal.displayInfo(
             f"VAM: Modal tool active. State={current_state}. Press 'q' or 'Esc' to exit."
         )
@@ -86,7 +81,6 @@ class VamContext(omui.MPxContext):
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
-        self.vam_core.remove_state_change_listener(self._on_state_changed)
         
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()

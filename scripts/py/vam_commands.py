@@ -96,6 +96,10 @@ def _handle_register_picking(key):
 
 
 def vam_handle_key_press(key, mod_flags=None, is_press=True):
+    print('in handle key press:')
+    print('key', key)
+    print('mod flags', mod_flags)
+    
     if _handle_state_switch(key, mod_flags=mod_flags, is_press=is_press):
         return
 
