@@ -196,8 +196,14 @@ class VamCore:
         cmds.nameCommand(name_cmd, annotation=f"{command}", command=command)
 
         print('handling key:', key)
-        if cmds.hotkey(key, q=True, **mod_kwargs):
-            cmds.hotkey(k=key, n='', rn='')
+        # Clear any existing mapping for this exact key/modifier in the target context.
+        cmds.hotkey(
+            keyShortcut=key,
+            name='',
+            releaseName='',
+            ctxClient=context_name,
+            **mod_kwargs
+        )
 
         if is_press:
             cmds.hotkey(

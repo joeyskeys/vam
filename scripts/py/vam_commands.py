@@ -232,9 +232,21 @@ def create_vam_hotkey_context():
     This function only creates/associates the context and does not register
     key bindings. Use register_vam_hotkey_bindings for key registration.
     """
-    # Same for context
-    if not cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True):
-        cmds.hotkeyCtx(ita=('', VAM_HOTKEY_CONTEXT))
+    # Ensure VAM context exists and has highest priority.
+    context_types = cmds.hotkeyCtx(typeArray=True, q=True) or []
+    context_exists = cmds.hotkeyCtx(te=VAM_HOTKEY_CONTEXT, q=True)
+    if context_exists and context_types and context_types[0] != VAM_HOTKEY_CONTEXT:
+        try:
+            cmds.hotkeyCtx(rt=VAM_HOTKEY_CONTEXT)
+            context_exists = False
+            print(f"Reordered hotkey context: {VAM_HOTKEY_CONTEXT}")
+        except Exception:
+            pass
+
+    if not context_exists:
+        context_types = cmds.hotkeyCtx(typeArray=True, q=True) or []
+        insert_before = context_types[0] if context_types else ''
+        cmds.hotkeyCtx(ita=(insert_before, VAM_HOTKEY_CONTEXT))
         print(f"Created hotkey context: {VAM_HOTKEY_CONTEXT}")
     
     # Associate context with viewport panels (modelPanel)
