@@ -1,9 +1,25 @@
 # -*- coding: utf-8 -*-
 
+import importlib
+
+import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
 from register_manager import RegisterManager
+import translate_drag as td
 from utils import singleton
+
+
+def get_vam_core():
+    """
+    Return the process-wide VamCore singleton from the currently loaded ``core`` module.
+
+    Use this (not ``from core import VamCore``) for callers that must agree with the
+    plugin after ``reload(core)``: a cached ``VamCore`` class binds the old
+    ``@singleton`` closure. Importing ``get_vam_core`` itself is fine — each call
+    still goes through ``importlib.import_module`` to construct the live singleton.
+    """
+    return importlib.import_module(__name__).VamCore()
 
 
 @singleton
@@ -20,7 +36,6 @@ class VamCore:
             'source': {'normal'},
             'destination': 'translate',
             'shortcuts': (
-                {'key': 'w', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
                 {'key': 'g', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {'trs': 'translate'},
@@ -45,7 +60,7 @@ class VamCore:
             'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'},
             'destination': 'normal',
             'shortcuts': (
-                {'key': 'Escape', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                {'key': 'q', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {},
         },
@@ -60,7 +75,9 @@ class VamCore:
         'to_register_picking': {
             'source': {'normal'},
             'destination': 'register_picking',
-            'shortcuts': (),
+            'shortcuts': (
+                {'key': 'r', 'ctl': False, 'alt': True, 'sht': False, 'is_press': True},
+            ),
             'updates': {},
         },
     }
@@ -83,6 +100,13 @@ class VamCore:
 
         self.register_manager = RegisterManager()
 
+        # Active MPxContext (VamContext) when the VAM tool is on; used to refresh title/help UI.
+        self._tool_context = None
+
+        # Live translate drag session (viewport mouse); see translate_drag.py
+        self._translate_session = None
+        self._dbg_translate_motion_core = 0
+
         self.key_set = set()
         self.key_mapping = {}
         self.init_key_set()
@@ -102,7 +126,27 @@ class VamCore:
             print(f"Cannot trigger '{trigger_name}' from state '{self.state}'")
             return False
 
+        prev_state = self.state
         self.state = destination
+
+        if prev_state == 'translate' and destination != 'translate':
+            if self._translate_session is not None:
+                print(
+                    "[VAM translate] leaving translate state → restore "
+                    f"(trigger={trigger_name!r} dest={destination!r})"
+                )
+                td.translate_modal_restore(self._translate_session)
+                self._translate_session = None
+
+        if destination == 'translate':
+            self._translate_session = td.translate_modal_begin(self.axis, self.base)
+            print(
+                "[VAM translate] _transition → translate: "
+                f"session={'OK' if self._translate_session else 'None'} "
+                f"(axis={self.axis!r} base={self.base!r})"
+            )
+
+        self.refresh_state_display()
         return True
 
     def init_key_set(self):
@@ -354,6 +398,89 @@ class VamCore:
                 cmds.select(*objects, replace=True)
         else:
             # Default when not in a register-aware state (extended later).
+            pass
+
+    def attach_tool_context(self, context):
+        """Register the active tool context for UI refresh (call from toolOnSetup)."""
+        self._tool_context = context
+
+    def detach_tool_context(self, context=None):
+        """Clear the tool context reference (call from toolOffCleanup)."""
+        if self._translate_session is not None:
+            print("[VAM translate] detach_tool_context: restoring modal session (tool off)")
+            td.translate_modal_restore(self._translate_session)
+            self._translate_session = None
+        self._tool_context = None
+
+    def _confirm_translate_modal(self):
+        """Commit modal translation and return to normal state."""
+        print("[VAM translate] _confirm_translate_modal (LMB)")
+        self._translate_session = None
+        self._transition('to_normal')
+
+    def sync_translate_modal_constraints(self):
+        """Keep modal session in sync after axis/base hotkeys during translate."""
+        if self.state != 'translate' or not self._translate_session:
+            return
+        self._translate_session['axis'] = self.axis
+        self._translate_session['base'] = self.base
+
+    def handle_viewport_mouse(self, phase, event):
+        """
+        Translate modal: ``motion`` (doMotion / doHold) tracks mouse move; ``press`` confirms.
+
+        phase: 'motion' | 'press'
+        """
+        if phase == 'motion':
+            self._dbg_translate_motion_core += 1
+            if self._dbg_translate_motion_core <= 10 or self._dbg_translate_motion_core % 120 == 0:
+                print(
+                    "[VAM translate] handle_viewport_mouse motion "
+                    f"#{self._dbg_translate_motion_core} state={self.state!r} "
+                    f"session={self._translate_session is not None}"
+                )
+
+        if self.state != 'translate':
+            if phase == 'press':
+                print(
+                    f"[VAM translate] handle_viewport_mouse press ignored "
+                    f"(state={self.state!r}, need translate)"
+                )
+            return
+
+        if phase == 'motion':
+            if self._translate_session:
+                td.translate_modal_update(self._translate_session, event)
+            else:
+                if self._dbg_translate_motion_core <= 10:
+                    print(
+                        "[VAM translate] motion: no session "
+                        "(translate_modal_begin failed or empty sel)"
+                    )
+            return
+
+        if phase == 'press':
+            print(
+                f"[VAM translate] handle_viewport_mouse press "
+                f"session={self._translate_session is not None} -> confirm"
+            )
+            self._confirm_translate_modal()
+
+    def refresh_state_display(self):
+        """Update tool title/help and mark MToolsInfo as dirty."""
+        ctx = self._tool_context
+        if ctx is not None:
+            ctx.setTitleString(f"VAM - Vim-like Animation Tool [{self.state}]")
+            try:
+                ctx.setHelpString(f"VAM state: {self.state}")
+            except Exception:
+                pass
+
+        try:
+            omui.MToolsInfo.setDirtyFlag()
+        except TypeError:
+            omui.MToolsInfo.setDirtyFlag(True)
+        except Exception:
             pass
 
     # Query methods

@@ -13,7 +13,8 @@ The separation allows:
 
 import maya.cmds as cmds
 import maya.mel as mel
-from core import VamCore
+
+from core import get_vam_core
 
 
 def _build_runtime_command_name(base_name, key, is_press, mod_flags):
@@ -37,7 +38,7 @@ def _is_shortcut_match(shortcut, key, mod_flags, is_press):
 
 
 def _handle_state_switch(key, mod_flags=None, is_press=True):
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     mod_flags = mod_flags or {}
 
     for trigger_name, transition in vam_core.transitions.items():
@@ -56,8 +57,18 @@ def _handle_state_switch(key, mod_flags=None, is_press=True):
     return False
 
 
+def _handle_exit_tool(key, mod_flags=None, is_press=True):
+    """Exit VAM tool on Esc (no modifiers)."""
+    is_escape = key == 'Escape'
+    if not is_escape:
+        return False
+    print("[VAM] Escape pressed -> exit tool")
+    cmds.setToolTo('selectSuperContext')
+    return True
+
+
 def _handle_axis_setup(key):
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     if not key:
         return False
 
@@ -65,20 +76,22 @@ def _handle_axis_setup(key):
         return False
 
     vam_core.axis = key
+    vam_core.sync_translate_modal_constraints()
     return True
 
 
 def _handle_base_cycle(key):
     if key != 'Tab':
         return False
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     bases = vam_core.bases
     vam_core.base = bases[(bases.index(vam_core.base) + 1) % len(bases)]
+    vam_core.sync_translate_modal_constraints()
     return True
 
 
 def _handle_register_setup(key):
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     if vam_core.state != 'register_setup':
         return False
     vam_core.register_manager.set_register_from_selection(key)
@@ -86,7 +99,7 @@ def _handle_register_setup(key):
 
 
 def _handle_register_picking(key):
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     if vam_core.state != 'register_picking':
         return False
     objects = vam_core.register_manager.get_register_objects(key)
@@ -99,7 +112,10 @@ def vam_handle_key_press(key, mod_flags=None, is_press=True):
     print('in handle key press:')
     print('key', key)
     print('mod flags', mod_flags)
-    
+
+    if _handle_exit_tool(key, mod_flags=mod_flags, is_press=is_press):
+        return
+
     if _handle_state_switch(key, mod_flags=mod_flags, is_press=is_press):
         return
 
@@ -266,7 +282,7 @@ def register_vam_hotkey_bindings(key_bindings):
     # If no corresponding key is registered, tool will exit immediately.
     # Use VamCore single-key registration so runtime updates and initial setup
     # both go through the same code path.
-    vam_core = VamCore()
+    vam_core = get_vam_core()
     for key, command_name, is_press, mod_flags in key_bindings:
         vam_core.register_hotkey(
             key=key,

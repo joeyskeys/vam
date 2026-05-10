@@ -43,31 +43,19 @@ class VamContext(omui.MPxContext):
         # Sets the cursor icon
         self.setCursor(omui.MCursor.kCrossHairCursor)
         
-        # Get VamCore singleton instance
-        self.vam_core = core.VamCore()
-
-    def _refresh_state_display(self, old_state, state_name, trigger_name):
-        """Update tool title/help and mark MToolsInfo as dirty."""
-        self.setTitleString(f"VAM - Vim-like Animation Tool [{state_name}]")
-        try:
-            self.setHelpString(f"VAM state: {state_name}")
-        except Exception:
-            pass
-
-        # Request Maya to refresh tool info UI.
-        try:
-            omui.MToolsInfo.setDirtyFlag()
-        except TypeError:
-            # Some Maya versions expose this with a boolean argument.
-            omui.MToolsInfo.setDirtyFlag(True)
-        except Exception:
-            pass
+        # Shared singleton (use accessor so hotkeys and tool agree after reload(core))
+        self.vam_core = core.get_vam_core()
+        self._dbg_motion_i = 0
+        self._dbg_hold_i = 0
+        self._dbg_drag_i = 0
+        self._dbg_press_i = 0
 
     def toolOnSetup(self, event):
         """Called when tool becomes active."""
         print("VAM Tool Active")
+        self.vam_core.attach_tool_context(self)
+        self.vam_core.refresh_state_display()
         current_state = self.vam_core.get_current_state()
-        self._refresh_state_display('', current_state, '')
         om.MGlobal.displayInfo(
             f"VAM: Modal tool active. State={current_state}. Press 'q' or 'Esc' to exit."
         )
@@ -81,7 +69,8 @@ class VamContext(omui.MPxContext):
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
-        
+        self.vam_core.detach_tool_context(self)
+
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
             restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
@@ -92,7 +81,19 @@ class VamContext(omui.MPxContext):
         
         Forward to state machine for processing by current state.
         """
-        # Forward event to state machine
+        self._dbg_press_i += 1
+        print(f"[VAM translate] VamContext.doPress #{self._dbg_press_i}")
+        self.vam_core.handle_viewport_mouse('press', event)
+
+    def doPtrMoved(self, event, drawMgr, frameContext):
+        """Mouse move in the viewport (no button drag); drives modal translate."""
+        self._dbg_motion_i += 1
+        if self._dbg_motion_i <= 15 or self._dbg_motion_i % 90 == 0:
+            print(f"[VAM translate] VamContext.doMotion #{self._dbg_motion_i}")
+        self.vam_core.handle_viewport_mouse('motion', event)
+
+    def doHold(self, event, drawMgr, frameContext):
+        """Some Maya builds use hold instead of motion for passive ticks; same handler."""
         pass
     
     def doRelease(self, event, drawMgr, frameContext):
@@ -101,16 +102,12 @@ class VamContext(omui.MPxContext):
         
         Forward to state machine for processing by current state.
         """
-        # Forward event to state machine
         pass
     
     def doDrag(self, event, drawMgr, frameContext):
         """
-        Handle Mouse Drag events.
-        
-        Forward to state machine for processing by current state.
+        Mouse drag (button held). Not used for modal translate — that follows doMotion / doHold.
         """
-        # Forward event to state machine
         pass
         
 
