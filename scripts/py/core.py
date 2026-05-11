@@ -6,7 +6,7 @@ import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
 from register_manager import RegisterManager
-import translate_drag as td
+import translate_move as tm
 from utils import singleton
 
 
@@ -135,11 +135,11 @@ class VamCore:
                     "[VAM translate] leaving translate state → restore "
                     f"(trigger={trigger_name!r} dest={destination!r})"
                 )
-                td.translate_modal_restore(self._translate_session)
+                tm.translate_modal_restore(self._translate_session)
                 self._translate_session = None
 
         if destination == 'translate':
-            self._translate_session = td.translate_modal_begin(self.axis, self.base)
+            self._translate_session = tm.translate_modal_begin(self.axis, self.base)
             print(
                 "[VAM translate] _transition → translate: "
                 f"session={'OK' if self._translate_session else 'None'} "
@@ -408,7 +408,7 @@ class VamCore:
         """Clear the tool context reference (call from toolOffCleanup)."""
         if self._translate_session is not None:
             print("[VAM translate] detach_tool_context: restoring modal session (tool off)")
-            td.translate_modal_restore(self._translate_session)
+            tm.translate_modal_restore(self._translate_session)
             self._translate_session = None
         self._tool_context = None
 
@@ -450,7 +450,7 @@ class VamCore:
 
         if phase == 'motion':
             if self._translate_session:
-                td.translate_modal_update(self._translate_session, event)
+                tm.translate_modal_update(self._translate_session, event)
             else:
                 if self._dbg_translate_motion_core <= 10:
                     print(

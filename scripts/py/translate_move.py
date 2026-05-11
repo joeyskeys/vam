@@ -38,10 +38,10 @@ def _camera_view_frame(cam_path: om.MDagPath) -> Tuple[om.MVector, om.MVector, o
     Camera eye and orthonormal right, up, forward (forward = view direction) in world space.
     """
     m = cam_path.inclusiveMatrix()
-    right = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
-    up = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
-    local_z = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
-    eye = om.MVector(m.getElement(0, 3), m.getElement(1, 3), m.getElement(2, 3))
+    right = om.MVector(m[0], m[1], m[2]).normalize()
+    up = om.MVector(m[4], m[5], m[6]).normalize()
+    local_z = om.MVector(m[8], m[9], m[10]).normalize()
+    eye = om.MVector(m[12], m[13], m[14])
     forward = (-local_z).normalize()
     return eye, right, up, forward
 
@@ -104,6 +104,53 @@ def _world_units_per_pixel(pivot: om.MVector, eye: om.MVector, cam_path: om.MDag
     return sx, sy
 
 
+def _view_ray_world(view: omui.M3dView, x: float, y: float) -> Tuple[om.MVector, om.MVector]:
+    """World-space ray origin + direction from viewport pixel coordinates."""
+    ix = int(round(x))
+    iy = int(round(y))
+    try:
+        origin, direction = view.viewToWorld(ix, iy)
+    except TypeError:
+        # Older signatures require mutable output args.
+        p = om.MPoint()
+        d = om.MVector()
+        view.viewToWorld(ix, iy, p, d)
+        origin, direction = p, d
+    o = om.MVector(origin.x, origin.y, origin.z)
+    v = om.MVector(direction.x, direction.y, direction.z)
+    if v.length() > 1.0e-8:
+        v.normalize()
+    return o, v
+
+
+def _intersect_ray_plane(ray_o: om.MVector, ray_d: om.MVector,
+                         plane_p: om.MVector, plane_n: om.MVector) -> Optional[om.MVector]:
+    """Ray-plane intersection in world space."""
+    denom = ray_d * plane_n
+    if abs(denom) < 1.0e-8:
+        return None
+    t = ((plane_p - ray_o) * plane_n) / denom
+    return ray_o + ray_d * t
+
+
+def _screen_space_delta(view: omui.M3dView, start_x: float, start_y: float, cur_x: float, cur_y: float,
+                        pivot_pt: om.MVector, view_right: om.MVector, view_up: om.MVector,
+                        view_forward: om.MVector) -> Optional[om.MVector]:
+    """
+    Screen-space drag mapped to world by intersecting pick rays against
+    a camera-facing plane through the selection pivot.
+    """
+    so, sd = _view_ray_world(view, start_x, start_y)
+    co, cd = _view_ray_world(view, cur_x, cur_y)
+    p0 = _intersect_ray_plane(so, sd, pivot_pt, view_forward)
+    p1 = _intersect_ray_plane(co, cd, pivot_pt, view_forward)
+    if p0 is None or p1 is None:
+        return None
+    plane_delta = p1 - p0
+    print('p0', p0, 'p1', p1, 'plane_delta', plane_delta)
+    return view_right * (plane_delta * view_right) + view_up * (plane_delta * view_up)
+
+
 def _plane_delta_raw(dx_px: float, dy_px: float, view_right: om.MVector, view_up: om.MVector,
                      sx: float, sy: float) -> om.MVector:
     """Unconstrained translation in the view plane (screen-style grab)."""
@@ -120,7 +167,7 @@ def _constrain_world_delta(raw: om.MVector, axis: str, base: str,
         return raw
 
     direction = _pick_axis_vector(axis, base, view_right, view_up, view_forward, pivot_path)
-    return direction * raw.dot(direction)
+    return direction * (raw * direction)
 
 
 def _selection_world_positions(paths: List[str]) -> Dict[str, Tuple[float, float, float]]:
@@ -187,13 +234,10 @@ def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'port_w': port_w,
         'port_h': port_h,
         'pivot_path': pivot_path,
+        'pivot_pt': pivot_pt,
         'initial_world_t': _selection_world_positions(transforms),
         'paths': transforms,
     }
-    print(
-        "[VAM translate] translate_modal_begin: OK "
-        f"n={len(transforms)} axis={axis!r} base={base!r} port={port_w:.0f}x{port_h:.0f}"
-    )
     return session
 
 
@@ -207,7 +251,6 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
     if session['start_mx'] is None:
         session['start_mx'] = mx
         session['start_my'] = my
-        print(f"[VAM translate] translate_modal_update: anchored mouse origin ({mx:.2f}, {my:.2f})")
         return
 
     dx = mx - session['start_mx']
@@ -220,34 +263,35 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
             f"mouse_delta=({dx:.2f},{dy:.2f}) mouse=({mx:.2f},{my:.2f})"
         )
 
-    # Temporary debug mode:
-    # bypass camera/axis/base constraint math and map mouse motion directly
-    # to world X/Y so movement magnitude is easy to validate.
-    # raw = _plane_delta_raw(
-    #     dx, dy,
-    #     session['view_right'], session['view_up'],
-    #     session['sx'], session['sy'],
-    # )
-    # delta = _constrain_world_delta(
-    #     raw,
-    #     session['axis'],
-    #     session['base'],
-    #     session['view_right'],
-    #     session['view_up'],
-    #     session['view_forward'],
-    #     session['pivot_path'],
-    # )
-    # dxw, dyw, dzw = delta.x, delta.y, delta.z
-    dxw = float(dx)
-    dyw = float(dy)
-    dzw = 0.0
-    print(f"dxw: {dxw}, dyw: {dyw}, dzw: {dzw}")
+    if session['base'] == 'screen':
+        view = omui.M3dView.active3dView()
+        cam_path = view.getCamera()
+        _, view_right, view_up, view_forward = _camera_view_frame(cam_path)
+        raw = _screen_space_delta(
+            view,
+            session['start_mx'],
+            session['start_my'],
+            mx,
+            my,
+            session['pivot_pt'],
+            view_right,
+            view_up,
+            view_forward,
+        )
+        delta = raw
+    else:
+        raw = _plane_delta_raw(
+            dx, dy,
+            session['view_right'], session['view_up'],
+            session['sx'], session['sy'],
+        )
+        delta = raw
+
+    dxw, dyw, dzw = delta.x, delta.y, delta.z
 
     for path in session['paths']:
         ox, oy, oz = session['initial_world_t'][path]
-        print('path: ', path, 'x: ', ox + dxw, 'y: ', oy + dyw, 'z: ', oz + dzw)
         cmds.xform(path, t=(ox + dxw, oy + dyw, oz + dzw), ws=True, a=True)
-        #cmds.xform(path, t=(2, 3, 4), ws=True, a=True)
 
 
 def translate_modal_restore(session: Dict[str, Any]) -> None:
