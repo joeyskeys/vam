@@ -6,6 +6,7 @@ import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
 from register_manager import RegisterManager
+import scale_move as sm
 import translate_move as tm
 from utils import singleton
 
@@ -85,7 +86,7 @@ class VamCore:
     # Available transform modes
     trs_modes = ['translate', 'rotate', 'scale']
     axes = ['none', 'x', 'y', 'z']
-    bases = ['screen', 'local', 'world']
+    bases = ['screen', 'world', 'local',]
     
     def __init__(self):
         """Initialize VamCore with state and default settings."""
@@ -105,6 +106,7 @@ class VamCore:
 
         # Live translate drag session (viewport mouse); see translate_drag.py
         self._translate_session = None
+        self._scale_session = None
         self._dbg_translate_motion_core = 0
 
         self.key_set = set()
@@ -138,11 +140,28 @@ class VamCore:
                 tm.translate_modal_restore(self._translate_session)
                 self._translate_session = None
 
+        if prev_state == 'scale' and destination != 'scale':
+            if self._scale_session is not None:
+                print(
+                    "[VAM scale] leaving scale state → restore "
+                    f"(trigger={trigger_name!r} dest={destination!r})"
+                )
+                sm.scale_modal_restore(self._scale_session)
+                self._scale_session = None
+
         if destination == 'translate':
             self._translate_session = tm.translate_modal_begin(self.axis, self.base)
             print(
                 "[VAM translate] _transition → translate: "
                 f"session={'OK' if self._translate_session else 'None'} "
+                f"(axis={self.axis!r} base={self.base!r})"
+            )
+
+        if destination == 'scale':
+            self._scale_session = sm.scale_modal_begin(self.axis, self.base)
+            print(
+                "[VAM scale] _transition → scale: "
+                f"session={'OK' if self._scale_session else 'None'} "
                 f"(axis={self.axis!r} base={self.base!r})"
             )
 
@@ -410,6 +429,10 @@ class VamCore:
             print("[VAM translate] detach_tool_context: restoring modal session (tool off)")
             tm.translate_modal_restore(self._translate_session)
             self._translate_session = None
+        if self._scale_session is not None:
+            print("[VAM scale] detach_tool_context: restoring modal session (tool off)")
+            sm.scale_modal_restore(self._scale_session)
+            self._scale_session = None
         self._tool_context = None
 
     def _confirm_translate_modal(self):
@@ -418,12 +441,20 @@ class VamCore:
         self._translate_session = None
         self._transition('to_normal')
 
+    def _confirm_scale_modal(self):
+        """Commit modal scaling and return to normal state."""
+        print("[VAM scale] _confirm_scale_modal (LMB)")
+        self._scale_session = None
+        self._transition('to_normal')
+
     def sync_translate_modal_constraints(self):
-        """Keep modal session in sync after axis/base hotkeys during translate."""
-        if self.state != 'translate' or not self._translate_session:
-            return
-        self._translate_session['axis'] = self.axis
-        self._translate_session['base'] = self.base
+        """Keep translate/scale modal sessions in sync after axis/base hotkeys."""
+        if self.state == 'translate' and self._translate_session:
+            self._translate_session['axis'] = self.axis
+            self._translate_session['base'] = self.base
+        if self.state == 'scale' and self._scale_session:
+            self._scale_session['axis'] = self.axis
+            self._scale_session['base'] = self.base
 
     def handle_viewport_mouse(self, phase, event):
         """
@@ -440,39 +471,61 @@ class VamCore:
                     f"session={self._translate_session is not None}"
                 )
 
-        if self.state != 'translate':
+        if self.state not in ('translate', 'scale'):
             if phase == 'press':
                 print(
                     f"[VAM translate] handle_viewport_mouse press ignored "
-                    f"(state={self.state!r}, need translate)"
+                    f"(state={self.state!r}, need translate/scale)"
                 )
             return
 
-        if phase == 'motion':
-            if self._translate_session:
-                tm.translate_modal_update(self._translate_session, event)
-            else:
-                if self._dbg_translate_motion_core <= 10:
-                    print(
-                        "[VAM translate] motion: no session "
-                        "(translate_modal_begin failed or empty sel)"
-                    )
+        if self.state == 'translate':
+            if phase == 'motion':
+                if self._translate_session:
+                    tm.translate_modal_update(self._translate_session, event)
+                else:
+                    if self._dbg_translate_motion_core <= 10:
+                        print(
+                            "[VAM translate] motion: no session "
+                            "(translate_modal_begin failed or empty sel)"
+                        )
+                return
+
+            if phase == 'press':
+                print(
+                    f"[VAM translate] handle_viewport_mouse press "
+                    f"session={self._translate_session is not None} -> confirm"
+                )
+                self._confirm_translate_modal()
             return
 
-        if phase == 'press':
-            print(
-                f"[VAM translate] handle_viewport_mouse press "
-                f"session={self._translate_session is not None} -> confirm"
-            )
-            self._confirm_translate_modal()
+        if self.state == 'scale':
+            if phase == 'motion':
+                if self._scale_session:
+                    sm.scale_modal_update(self._scale_session, event)
+                else:
+                    if self._dbg_translate_motion_core <= 10:
+                        print(
+                            "[VAM scale] motion: no session "
+                            "(scale_modal_begin failed or empty sel)"
+                        )
+                return
+
+            if phase == 'press':
+                print(
+                    f"[VAM scale] handle_viewport_mouse press "
+                    f"session={self._scale_session is not None} -> confirm"
+                )
+                self._confirm_scale_modal()
 
     def refresh_state_display(self):
         """Update tool title/help and mark MToolsInfo as dirty."""
         ctx = self._tool_context
+        display_state = f"state={self.state} axis={self.axis} base={self.base}"
         if ctx is not None:
-            ctx.setTitleString(f"VAM - Vim-like Animation Tool [{self.state}]")
+            ctx.setTitleString(f"VAM - Vim-like Animation Tool [{display_state}]")
             try:
-                ctx.setHelpString(f"VAM state: {self.state}")
+                ctx.setHelpString(f"VAM {display_state}")
             except Exception:
                 pass
 

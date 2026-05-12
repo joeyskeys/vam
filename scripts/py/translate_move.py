@@ -46,40 +46,6 @@ def _camera_view_frame(cam_path: om.MDagPath) -> Tuple[om.MVector, om.MVector, o
     return eye, right, up, forward
 
 
-def _local_axes_world(pivot_path: str) -> Tuple[om.MVector, om.MVector, om.MVector]:
-    """Pivot object's local X/Y/Z as unit vectors in world space."""
-    sel = om.MSelectionList()
-    sel.add(pivot_path)
-    dag = sel.getDagPath(0)
-    m = dag.inclusiveMatrix()
-    lx = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
-    ly = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
-    lz = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
-    return lx, ly, lz
-
-
-def _world_axes() -> Tuple[om.MVector, om.MVector, om.MVector]:
-    return (
-        om.MVector(1, 0, 0),
-        om.MVector(0, 1, 0),
-        om.MVector(0, 0, 1),
-    )
-
-
-def _pick_axis_vector(axis: str, base: str, view_right: om.MVector, view_up: om.MVector,
-                      view_forward: om.MVector, pivot_path: Optional[str]) -> om.MVector:
-    """Single constrained axis direction in world space."""
-    idx = {'x': 0, 'y': 1, 'z': 2}[axis]
-
-    if base == 'screen':
-        return [view_right, view_up, view_forward][idx]
-    if base == 'world':
-        return _world_axes()[idx]
-    if pivot_path:
-        return _local_axes_world(pivot_path)[idx]
-    return _world_axes()[idx]
-
-
 def _world_units_per_pixel(pivot: om.MVector, eye: om.MVector, cam_path: om.MDagPath,
                            port_w: float, port_h: float) -> Tuple[float, float]:
     """Approximate world translation per pixel at ``pivot`` depth."""
@@ -97,10 +63,6 @@ def _world_units_per_pixel(pivot: om.MVector, eye: om.MVector, cam_path: om.MDag
     half_h = dist * math.tan(vfov * 0.5)
     sy = (2.0 * half_h) / max(port_h, 1.0)
     sx = sy * (port_w / max(port_h, 1.0))
-    print(
-        f"[VAM translate] scale perspective: vfov={vfov:.4f} dist={dist:.4f} "
-        f"sx={sx:.6f} sy={sy:.6f}"
-    )
     return sx, sy
 
 
@@ -147,26 +109,66 @@ def _screen_space_delta(view: omui.M3dView, start_x: float, start_y: float, cur_
     if p0 is None or p1 is None:
         return None
     plane_delta = p1 - p0
-    print('p0', p0, 'p1', p1, 'plane_delta', plane_delta)
     return view_right * (plane_delta * view_right) + view_up * (plane_delta * view_up)
 
 
 def _plane_delta_raw(dx_px: float, dy_px: float, view_right: om.MVector, view_up: om.MVector,
                      sx: float, sy: float) -> om.MVector:
     """Unconstrained translation in the view plane (screen-style grab)."""
-    return view_right * dx_px * sx + view_up * (-dy_px) * sy
+    return view_right * dx_px * sx + view_up * dy_px * sy
 
 
-def _constrain_world_delta(raw: om.MVector, axis: str, base: str,
+def _local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector, om.MVector]:
+    """Pivot object's local X/Y/Z as unit vectors in world space."""
+    if not pivot_path:
+        return (
+            om.MVector(1, 0, 0),
+            om.MVector(0, 1, 0),
+            om.MVector(0, 0, 1),
+        )
+    sel = om.MSelectionList()
+    sel.add(pivot_path)
+    dag = sel.getDagPath(0)
+    m = dag.inclusiveMatrix()
+    lx = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
+    ly = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
+    lz = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
+    return lx, ly, lz
+
+
+def _axis_direction_for_base(axis: str, base: str, session: Dict[str, Any],
+                             view_right: om.MVector, view_up: om.MVector,
+                             view_forward: om.MVector) -> Optional[om.MVector]:
+    """Get constrained axis direction in world space for the current base."""
+    if axis not in ('x', 'y', 'z'):
+        return None
+
+    idx = {'x': 0, 'y': 1, 'z': 2}[axis]
+    if base == 'local':
+        return _local_axes_world(session.get('pivot_path'))[idx]
+    if base == 'world':
+        return (
+            om.MVector(1, 0, 0),
+            om.MVector(0, 1, 0),
+            om.MVector(0, 0, 1),
+        )[idx]
+    return (view_right, view_up, view_forward)[idx]
+
+
+def _apply_axis_constraint(raw: Optional[om.MVector], session: Dict[str, Any],
                            view_right: om.MVector, view_up: om.MVector,
-                           view_forward: om.MVector, pivot_path: Optional[str]) -> om.MVector:
-    """Apply axis + base rules to the unconstrained view-plane delta."""
+                           view_forward: om.MVector) -> om.MVector:
+    """Project raw delta to selected axis according to current base mode."""
+    if raw is None:
+        return om.MVector(0, 0, 0)
+
+    axis = session.get('axis', 'none')
     if axis == 'none':
-        if base == 'screen':
-            return raw
         return raw
 
-    direction = _pick_axis_vector(axis, base, view_right, view_up, view_forward, pivot_path)
+    direction = _axis_direction_for_base(axis, session.get('base', 'screen'), session, view_right, view_up, view_forward)
+    if direction is None:
+        return raw
     return direction * (raw * direction)
 
 
@@ -257,11 +259,6 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
     dy = my - session['start_my']
 
     _DBG_UPDATE_N += 1
-    if _DBG_UPDATE_N <= 8 or _DBG_UPDATE_N % 60 == 0:
-        print(
-            f"[VAM translate] translate_modal_update #{_DBG_UPDATE_N} "
-            f"mouse_delta=({dx:.2f},{dy:.2f}) mouse=({mx:.2f},{my:.2f})"
-        )
 
     if session['base'] == 'screen':
         view = omui.M3dView.active3dView()
@@ -278,14 +275,16 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
             view_up,
             view_forward,
         )
-        delta = raw
     else:
+        view_right = session['view_right']
+        view_up = session['view_up']
+        view_forward = session['view_forward']
         raw = _plane_delta_raw(
             dx, dy,
-            session['view_right'], session['view_up'],
+            view_right, view_up,
             session['sx'], session['sy'],
         )
-        delta = raw
+    delta = _apply_axis_constraint(raw, session, view_right, view_up, view_forward)
 
     dxw, dyw, dzw = delta.x, delta.y, delta.z
 

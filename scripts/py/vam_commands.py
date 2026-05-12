@@ -75,18 +75,16 @@ def _handle_axis_setup(key):
     if key not in vam_core.axes:
         return False
 
-    vam_core.axis = key
-    vam_core.sync_translate_modal_constraints()
-    return True
-
-
-def _handle_base_cycle(key):
-    if key != 'Tab':
-        return False
-    vam_core = get_vam_core()
     bases = vam_core.bases
+    vam_core.axis = key
+    if vam_core.axis != 'none' and key != vam_core.axis:
+        vam_core.base = bases[-1]
     vam_core.base = bases[(bases.index(vam_core.base) + 1) % len(bases)]
+    if vam_core.base == 'screen':
+        vam_core.axis = 'none'
+
     vam_core.sync_translate_modal_constraints()
+    vam_core.refresh_state_display()
     return True
 
 
@@ -120,9 +118,6 @@ def vam_handle_key_press(key, mod_flags=None, is_press=True):
         return
 
     if _handle_axis_setup(key):
-        return
-    
-    if _handle_base_cycle(key):
         return
 
     if _handle_register_setup(key):
