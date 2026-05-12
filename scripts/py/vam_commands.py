@@ -76,12 +76,15 @@ def _handle_axis_setup(key):
         return False
 
     bases = vam_core.bases
-    vam_core.axis = key
     if vam_core.axis != 'none' and key != vam_core.axis:
-        vam_core.base = bases[-1]
-    vam_core.base = bases[(bases.index(vam_core.base) + 1) % len(bases)]
-    if vam_core.base == 'screen':
-        vam_core.axis = 'none'
+        vam_core.base = bases[1]
+        vam_core.axis = key
+    else:
+        vam_core.base = bases[(bases.index(vam_core.base) + 1) % len(bases)]
+        if vam_core.base == 'screen':
+            vam_core.axis = 'none'
+        else:
+            vam_core.axis = key
 
     vam_core.sync_translate_modal_constraints()
     vam_core.refresh_state_display()

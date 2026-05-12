@@ -6,6 +6,7 @@ import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
 from register_manager import RegisterManager
+import rotate_move as rm
 import scale_move as sm
 import translate_move as tm
 from utils import singleton
@@ -106,6 +107,7 @@ class VamCore:
 
         # Live translate drag session (viewport mouse); see translate_drag.py
         self._translate_session = None
+        self._rotate_session = None
         self._scale_session = None
         self._dbg_translate_motion_core = 0
 
@@ -149,11 +151,28 @@ class VamCore:
                 sm.scale_modal_restore(self._scale_session)
                 self._scale_session = None
 
+        if prev_state == 'rotate' and destination != 'rotate':
+            if self._rotate_session is not None:
+                print(
+                    "[VAM rotate] leaving rotate state → restore "
+                    f"(trigger={trigger_name!r} dest={destination!r})"
+                )
+                rm.rotate_modal_restore(self._rotate_session)
+                self._rotate_session = None
+
         if destination == 'translate':
             self._translate_session = tm.translate_modal_begin(self.axis, self.base)
             print(
                 "[VAM translate] _transition → translate: "
                 f"session={'OK' if self._translate_session else 'None'} "
+                f"(axis={self.axis!r} base={self.base!r})"
+            )
+
+        if destination == 'rotate':
+            self._rotate_session = rm.rotate_modal_begin(self.axis, self.base)
+            print(
+                "[VAM rotate] _transition → rotate: "
+                f"session={'OK' if self._rotate_session else 'None'} "
                 f"(axis={self.axis!r} base={self.base!r})"
             )
 
@@ -429,6 +448,10 @@ class VamCore:
             print("[VAM translate] detach_tool_context: restoring modal session (tool off)")
             tm.translate_modal_restore(self._translate_session)
             self._translate_session = None
+        if self._rotate_session is not None:
+            print("[VAM rotate] detach_tool_context: restoring modal session (tool off)")
+            rm.rotate_modal_restore(self._rotate_session)
+            self._rotate_session = None
         if self._scale_session is not None:
             print("[VAM scale] detach_tool_context: restoring modal session (tool off)")
             sm.scale_modal_restore(self._scale_session)
@@ -447,11 +470,20 @@ class VamCore:
         self._scale_session = None
         self._transition('to_normal')
 
+    def _confirm_rotate_modal(self):
+        """Commit modal rotation and return to normal state."""
+        print("[VAM rotate] _confirm_rotate_modal (LMB)")
+        self._rotate_session = None
+        self._transition('to_normal')
+
     def sync_translate_modal_constraints(self):
-        """Keep translate/scale modal sessions in sync after axis/base hotkeys."""
+        """Keep translate/rotate/scale modal sessions in sync after axis/base hotkeys."""
         if self.state == 'translate' and self._translate_session:
             self._translate_session['axis'] = self.axis
             self._translate_session['base'] = self.base
+        if self.state == 'rotate' and self._rotate_session:
+            self._rotate_session['axis'] = self.axis
+            self._rotate_session['base'] = self.base
         if self.state == 'scale' and self._scale_session:
             self._scale_session['axis'] = self.axis
             self._scale_session['base'] = self.base
@@ -471,11 +503,11 @@ class VamCore:
                     f"session={self._translate_session is not None}"
                 )
 
-        if self.state not in ('translate', 'scale'):
+        if self.state not in ('translate', 'rotate', 'scale'):
             if phase == 'press':
                 print(
                     f"[VAM translate] handle_viewport_mouse press ignored "
-                    f"(state={self.state!r}, need translate/scale)"
+                    f"(state={self.state!r}, need translate/rotate/scale)"
                 )
             return
 
@@ -517,6 +549,26 @@ class VamCore:
                     f"session={self._scale_session is not None} -> confirm"
                 )
                 self._confirm_scale_modal()
+            return
+
+        if self.state == 'rotate':
+            if phase == 'motion':
+                if self._rotate_session:
+                    rm.rotate_modal_update(self._rotate_session, event)
+                else:
+                    if self._dbg_translate_motion_core <= 10:
+                        print(
+                            "[VAM rotate] motion: no session "
+                            "(rotate_modal_begin failed or empty sel)"
+                        )
+                return
+
+            if phase == 'press':
+                print(
+                    f"[VAM rotate] handle_viewport_mouse press "
+                    f"session={self._rotate_session is not None} -> confirm"
+                )
+                self._confirm_rotate_modal()
 
     def refresh_state_display(self):
         """Update tool title/help and mark MToolsInfo as dirty."""
