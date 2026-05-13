@@ -6,6 +6,7 @@ from importlib import reload
 
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
+import maya.api.OpenMayaRender as omr
 import maya.cmds as cmds
 
 import core
@@ -102,13 +103,42 @@ class VamContext(omui.MPxContext):
         
         Forward to state machine for processing by current state.
         """
-        pass
+        self.vam_core.handle_viewport_mouse('release', event)
     
     def doDrag(self, event, drawMgr, frameContext):
         """
-        Mouse drag (button held). Not used for modal translate — that follows doMotion / doHold.
+        Mouse drag (button held). Used by normal-state marquee selection.
         """
-        pass
+        self.vam_core.handle_viewport_mouse('drag', event)
+        marquee = self.vam_core.get_normal_selection_marquee()
+        if not marquee or drawMgr is None:
+            return
+
+        x1, y1, x2, y2 = marquee
+        try:
+            drawMgr.beginDrawable()
+            try:
+                drawMgr.setColor(om.MColor((1.0, 1.0, 1.0, 0.9)))
+                drawMgr.setLineWidth(1.0)
+                drawMgr.setLineStyle(omr.MUIDrawManager.kDashed)
+            except Exception:
+                pass
+
+            p1 = om.MPoint(x1, y1, 0.0)
+            p2 = om.MPoint(x2, y1, 0.0)
+            p3 = om.MPoint(x2, y2, 0.0)
+            p4 = om.MPoint(x1, y2, 0.0)
+            drawMgr.line2d(p1, p2)
+            drawMgr.line2d(p2, p3)
+            drawMgr.line2d(p3, p4)
+            drawMgr.line2d(p4, p1)
+        except Exception:
+            pass
+        finally:
+            try:
+                drawMgr.endDrawable()
+            except Exception:
+                pass
         
 
 class VamContextCmd(omui.MPxContextCommand):

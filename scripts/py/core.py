@@ -2,6 +2,7 @@
 
 import importlib
 
+import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
 
@@ -78,7 +79,7 @@ class VamCore:
             'source': {'normal'},
             'destination': 'register_picking',
             'shortcuts': (
-                {'key': 'r', 'ctl': False, 'alt': True, 'sht': False, 'is_press': True},
+                {'key': 't', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {},
         },
@@ -110,6 +111,9 @@ class VamCore:
         self._rotate_session = None
         self._scale_session = None
         self._dbg_translate_motion_core = 0
+        self._normal_select_press = None
+        self._normal_select_current = None
+        self._normal_select_dragged = False
 
         self.key_set = set()
         self.key_mapping = {}
@@ -492,7 +496,7 @@ class VamCore:
         """
         Translate modal: ``motion`` (doMotion / doHold) tracks mouse move; ``press`` confirms.
 
-        phase: 'motion' | 'press'
+        phase: 'motion' | 'press' | 'drag' | 'release'
         """
         if phase == 'motion':
             self._dbg_translate_motion_core += 1
@@ -502,6 +506,74 @@ class VamCore:
                     f"#{self._dbg_translate_motion_core} state={self.state!r} "
                     f"session={self._translate_session is not None}"
                 )
+
+        if self.state == 'normal' and phase == 'press':
+            left_mouse = True
+            try:
+                button = event.mouseButton()
+                left_button = getattr(omui.MEvent, 'kLeftMouse', None)
+                if left_button is None:
+                    left_button = getattr(omui.MEvent, 'kLeftButton', None)
+                if left_button is not None:
+                    left_mouse = (button == left_button)
+            except Exception:
+                pass
+
+            if left_mouse:
+                x, y = self._event_screen_xy(event)
+                self._normal_select_press = (x, y)
+                self._normal_select_current = (x, y)
+                self._normal_select_dragged = False
+            return
+
+        if self.state == 'normal' and phase == 'drag':
+            if self._normal_select_press is not None:
+                self._normal_select_dragged = True
+                self._normal_select_current = self._event_screen_xy(event)
+            return
+
+        if self.state == 'normal' and phase == 'release':
+            if self._normal_select_press is None:
+                return
+
+            start_x, start_y = self._normal_select_press
+            end_x, end_y = self._event_screen_xy(event)
+
+            shift_pressed = False
+            try:
+                # Maya modifiers bitfield: Shift=1, Caps=2, Ctrl=4, Alt=8.
+                shift_pressed = bool(cmds.getModifiers() & 1)
+            except Exception:
+                pass
+            selection_mode = (
+                om.MGlobal.kAddToList if shift_pressed else om.MGlobal.kReplaceList
+            )
+
+            dx = abs(float(end_x) - float(start_x))
+            dy = abs(float(end_y) - float(start_y))
+            use_box_select = self._normal_select_dragged and (dx >= 2.0 or dy >= 2.0)
+
+            try:
+                if use_box_select:
+                    om.MGlobal.selectFromScreen(
+                        int(start_x), int(start_y), int(end_x), int(end_y), selection_mode
+                    )
+                else:
+                    om.MGlobal.selectFromScreen(int(end_x), int(end_y), selection_mode)
+            except TypeError:
+                try:
+                    om.MGlobal.selectFromScreen(
+                        int(end_x), int(end_y), int(end_x), int(end_y), selection_mode
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            finally:
+                self._normal_select_press = None
+                self._normal_select_current = None
+                self._normal_select_dragged = False
+            return
 
         if self.state not in ('translate', 'rotate', 'scale'):
             if phase == 'press':
@@ -569,6 +641,43 @@ class VamCore:
                     f"session={self._rotate_session is not None} -> confirm"
                 )
                 self._confirm_rotate_modal()
+
+    def _event_screen_xy(self, event):
+        """Extract 2D screen position from Maya event."""
+        x = y = 0.0
+        try:
+            x, y = event.position(om.MSpace.kScreen)
+            return float(x), float(y)
+        except Exception:
+            pass
+        try:
+            pos = event.position
+            if isinstance(pos, (tuple, list)) and len(pos) >= 2:
+                return float(pos[0]), float(pos[1])
+        except Exception:
+            pass
+        return x, y
+
+    def get_normal_selection_marquee(self):
+        """
+        Return marquee rectangle for normal-state drag selection.
+
+        Returns:
+            tuple[float, float, float, float] | None: (x1, y1, x2, y2) or None
+            when marquee drawing should be hidden.
+        """
+        if self.state != 'normal':
+            return None
+        if not self._normal_select_dragged:
+            return None
+        if self._normal_select_press is None or self._normal_select_current is None:
+            return None
+
+        x1, y1 = self._normal_select_press
+        x2, y2 = self._normal_select_current
+        if abs(x2 - x1) < 2.0 and abs(y2 - y1) < 2.0:
+            return None
+        return x1, y1, x2, y2
 
     def refresh_state_display(self):
         """Update tool title/help and mark MToolsInfo as dirty."""

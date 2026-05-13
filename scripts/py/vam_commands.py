@@ -95,7 +95,11 @@ def _handle_register_setup(key):
     vam_core = get_vam_core()
     if vam_core.state != 'register_setup':
         return False
-    vam_core.register_manager.set_register_from_selection(key)
+
+    selection = cmds.ls(sl=True, long=True) or []
+    if selection:
+        vam_core.register_manager.set_register_from_selection(key, selection)
+    vam_core._transition('to_normal')
     return True
 
 
@@ -103,9 +107,11 @@ def _handle_register_picking(key):
     vam_core = get_vam_core()
     if vam_core.state != 'register_picking':
         return False
+
     objects = vam_core.register_manager.get_register_objects(key)
     if objects:
         cmds.select(*objects, replace=True)
+    vam_core._transition('to_normal')
     return True
 
 
