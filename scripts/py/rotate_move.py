@@ -196,10 +196,22 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
     base = session.get('base', 'screen')
     axis = session.get('axis', 'none')
     view_forward = session['view_forward']
+    view = omui.M3dView.active3dView()
+    if view is not None and view.isVisible():
+        try:
+            _view_right, _view_up, view_forward = _camera_view_frame(view.getCamera())
+            session['view_forward'] = view_forward
+        except Exception:
+            pass
     pivot_screen = session.get('pivot_screen')
 
-    if pivot_screen is None:
-        view = omui.M3dView.active3dView()
+    # Keep pivot projection in sync if camera changes mid-modal.
+    if view is not None and view.isVisible():
+        projected = _world_to_view_xy(view, session['pivot_pt'])
+        if projected is not None:
+            pivot_screen = projected
+            session['pivot_screen'] = projected
+    elif pivot_screen is None:
         pivot_screen = _world_to_view_xy(view, session['pivot_pt']) if view else None
         session['pivot_screen'] = pivot_screen
 

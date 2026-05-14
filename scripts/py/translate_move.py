@@ -192,6 +192,12 @@ def _selection_pivot(paths: List[str]) -> om.MVector:
     )
 
 
+def unfreeze_camera(session: Dict[str, Any]) -> None:
+    """Unfreeze camera in the current viewport."""
+    cam_path = session['cam_path']
+    cmds.camera(cam_path, edit=True, lt=False)
+
+
 def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
     """
     Begin modal translation when entering translate state (no mouse button required).
@@ -216,6 +222,8 @@ def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         return None
 
     cam_path = view.getCamera()
+    cmds.camera(cam_path, edit=True, lt=True)
+
     eye, view_right, view_up, view_forward = _camera_view_frame(cam_path)
     pivot_pt = _selection_pivot(transforms)
     sx, sy = _world_units_per_pixel(pivot_pt, eye, cam_path, port_w, port_h)
@@ -239,6 +247,7 @@ def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'pivot_pt': pivot_pt,
         'initial_world_t': _selection_world_positions(transforms),
         'paths': transforms,
+        'cam_path': cam_path,
     }
     return session
 
@@ -279,10 +288,25 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
         view_right = session['view_right']
         view_up = session['view_up']
         view_forward = session['view_forward']
+        sx = session['sx']
+        sy = session['sy']
+        view = omui.M3dView.active3dView()
+        if view is not None and view.isVisible():
+            try:
+                cam_path = view.getCamera()
+                eye, view_right, view_up, view_forward = _camera_view_frame(cam_path)
+                port_w = float(view.portWidth())
+                port_h = float(view.portHeight())
+                if port_w > 0.0 and port_h > 0.0:
+                    sx, sy = _world_units_per_pixel(
+                        session['pivot_pt'], eye, cam_path, port_w, port_h
+                    )
+            except Exception:
+                pass
         raw = _plane_delta_raw(
             dx, dy,
             view_right, view_up,
-            session['sx'], session['sy'],
+            sx, sy,
         )
     delta = _apply_axis_constraint(raw, session, view_right, view_up, view_forward)
 
@@ -297,3 +321,4 @@ def translate_modal_restore(session: Dict[str, Any]) -> None:
     """Restore world translations captured at modal begin (cancel)."""
     for path, t0 in session['initial_world_t'].items():
         cmds.xform(path, translation=t0, worldSpace=True, absolute=True)
+    unfreeze_camera(session)

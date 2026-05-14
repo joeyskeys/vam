@@ -51,6 +51,33 @@ class VamContext(omui.MPxContext):
         self._dbg_drag_i = 0
         self._dbg_press_i = 0
 
+    @staticmethod
+    def _alt_pressed(event):
+        """Best-effort Alt modifier check across Maya API variants."""
+        try:
+            mods = event.modifiers()
+            alt_mask = getattr(omui.MEvent, 'kAltModifier', None)
+            if alt_mask is not None:
+                return bool(mods & alt_mask)
+        except Exception:
+            pass
+        try:
+            # Maya modifiers bitfield: Shift=1, Caps=2, Ctrl=4, Alt=8.
+            return bool(cmds.getModifiers() & 8)
+        except Exception:
+            return False
+
+    def _should_block_alt_navigation(self, event):
+        """
+        Block Alt+mouse during modal transform states.
+
+        This avoids camera tumble/pan/dolly from changing the view basis mid-modal.
+        """
+        return (
+            self.vam_core.get_current_state() in ('translate', 'rotate', 'scale')
+            and self._alt_pressed(event)
+        )
+
     def toolOnSetup(self, event):
         """Called when tool becomes active."""
         print("VAM Tool Active")
@@ -109,6 +136,8 @@ class VamContext(omui.MPxContext):
         """
         Mouse drag (button held). Used by normal-state marquee selection.
         """
+        if self._should_block_alt_navigation(event):
+            return
         self.vam_core.handle_viewport_mouse('drag', event)
         marquee = self.vam_core.get_normal_selection_marquee()
         if not marquee or drawMgr is None:

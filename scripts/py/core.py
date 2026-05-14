@@ -462,22 +462,31 @@ class VamCore:
             self._scale_session = None
         self._tool_context = None
 
+    def _reset_axis_base(self):
+        """Reset axis and base to default values."""
+        self.axis = 'none'
+        self.base = 'screen'
+
     def _confirm_translate_modal(self):
         """Commit modal translation and return to normal state."""
         print("[VAM translate] _confirm_translate_modal (LMB)")
+        tm.unfreeze_camera(self._translate_session)
         self._translate_session = None
+        self._reset_axis_base()
         self._transition('to_normal')
 
     def _confirm_scale_modal(self):
         """Commit modal scaling and return to normal state."""
         print("[VAM scale] _confirm_scale_modal (LMB)")
         self._scale_session = None
+        self._reset_axis_base()
         self._transition('to_normal')
 
     def _confirm_rotate_modal(self):
         """Commit modal rotation and return to normal state."""
         print("[VAM rotate] _confirm_rotate_modal (LMB)")
         self._rotate_session = None
+        self._reset_axis_base()
         self._transition('to_normal')
 
     def sync_translate_modal_constraints(self):

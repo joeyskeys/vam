@@ -143,6 +143,9 @@ def vam_handle_key_press(key, mod_flags=None, is_press=True):
 VAM_HOTKEY_SET = "vamToolSet"
 VAM_HOTKEY_CONTEXT = "vamToolContext"
 VAM_HANDLE_KEY_PRESS_COMMAND = "vamHandleKeyPress"
+VAM_DEFAULT_HOTKEY_SET = "Maya_Default"
+
+_VAM_QUIT_SCRIPTJOB_ID = None
 
 
 def begin_vam_tool_hotkey_set():
@@ -156,6 +159,8 @@ def begin_vam_tool_hotkey_set():
     Returns:
         str | None: Name of the hotkey set that was current before switching.
     """
+    _ensure_vam_quit_cleanup_scriptjob()
+
     previous = cmds.hotkeySet(q=True, current=True)
     if isinstance(previous, (list, tuple)):
         previous = previous[0] if previous else None
@@ -171,10 +176,10 @@ def begin_vam_tool_hotkey_set():
     return previous
 
 
-def restore_vam_tool_hotkey_set(previous_set_name):
+def restore_vam_tool_hotkey_set(previous_set_name=None):
     """Restore the hotkey set that was current before begin_vam_tool_hotkey_set."""
     if not previous_set_name:
-        return
+        previous_set_name = 'Maya_Default'
     if cmds.hotkeySet(previous_set_name, exists=True):
         cmds.hotkeySet(previous_set_name, edit=True, current=True)
     
@@ -332,10 +337,62 @@ def deactivate_vam_hotkey_context():
     
     Call this when the VAM tool is exited.
     """
-    # Return to default hotkey context
-    active_panel = cmds.getPanel(withFocus=True)
-    cmds.hotkeyCtx(t="Global", cc=active_panel)
-    print(f"Deactivated hotkey context, returned to Global")
+    try:
+        active_panel = cmds.getPanel(withFocus=True)
+        if active_panel:
+            cmds.hotkeyCtx(t="Global", cc=active_panel)
+            print("Deactivated hotkey context, returned to Global")
+            return
+    except Exception:
+        pass
+
+    try:
+        cmds.hotkeyCtx(t="Global", currentClient="modelPanel")
+        print("Deactivated hotkey context, returned to Global (generic modelPanel)")
+    except Exception:
+        pass
+
+
+def force_restore_vam_hotkeys_on_exit():
+    """Best-effort hotkey cleanup when Maya quits while VAM is active."""
+    deactivate_vam_hotkey_context()
+    restore_vam_tool_hotkey_set()
+
+
+def _ensure_vam_quit_cleanup_scriptjob():
+    """Install one quitApplication scriptJob to restore hotkey state."""
+    global _VAM_QUIT_SCRIPTJOB_ID
+    try:
+        if _VAM_QUIT_SCRIPTJOB_ID and cmds.scriptJob(exists=_VAM_QUIT_SCRIPTJOB_ID):
+            return _VAM_QUIT_SCRIPTJOB_ID
+    except Exception:
+        _VAM_QUIT_SCRIPTJOB_ID = None
+
+    try:
+        jobs = cmds.scriptJob(listJobs=True) or []
+        for job in jobs:
+            if "force_restore_vam_hotkeys_on_exit" not in job:
+                continue
+            job_id = int(str(job).split(":", 1)[0].strip())
+            if cmds.scriptJob(exists=job_id):
+                _VAM_QUIT_SCRIPTJOB_ID = job_id
+                return _VAM_QUIT_SCRIPTJOB_ID
+    except Exception:
+        pass
+
+    try:
+        callback = (
+            "import vam_commands as _vam_commands; "
+            "_vam_commands.force_restore_vam_hotkeys_on_exit()"
+        )
+        _VAM_QUIT_SCRIPTJOB_ID = cmds.scriptJob(
+            event=["quitApplication", callback],
+            protected=True,
+        )
+        print(f"Installed VAM quit cleanup scriptJob: {_VAM_QUIT_SCRIPTJOB_ID}")
+    except Exception:
+        _VAM_QUIT_SCRIPTJOB_ID = None
+    return _VAM_QUIT_SCRIPTJOB_ID
 
 
 def setup_vam_hotkeys(key_bindings):
