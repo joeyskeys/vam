@@ -110,6 +110,7 @@ class VamCore:
         self._translate_session = None
         self._rotate_session = None
         self._scale_session = None
+        self._modal_camera_path = None
         self._dbg_translate_motion_core = 0
         self._normal_select_press = None
         self._normal_select_current = None
@@ -136,6 +137,9 @@ class VamCore:
 
         prev_state = self.state
         self.state = destination
+
+        if destination in ('translate', 'rotate', 'scale'):
+            self._freeze_modal_camera()
 
         if prev_state == 'translate' and destination != 'translate':
             if self._translate_session is not None:
@@ -164,8 +168,16 @@ class VamCore:
                 rm.rotate_modal_restore(self._rotate_session)
                 self._rotate_session = None
 
+        if prev_state in ('translate', 'rotate', 'scale') and destination != prev_state:
+            self._unfreeze_modal_camera()
+
+        if destination == 'normal':
+            self._reset_axis_base()
+
         if destination == 'translate':
             self._translate_session = tm.translate_modal_begin(self.axis, self.base)
+            if self._translate_session is None:
+                self._unfreeze_modal_camera()
             print(
                 "[VAM translate] _transition → translate: "
                 f"session={'OK' if self._translate_session else 'None'} "
@@ -174,6 +186,8 @@ class VamCore:
 
         if destination == 'rotate':
             self._rotate_session = rm.rotate_modal_begin(self.axis, self.base)
+            if self._rotate_session is None:
+                self._unfreeze_modal_camera()
             print(
                 "[VAM rotate] _transition → rotate: "
                 f"session={'OK' if self._rotate_session else 'None'} "
@@ -182,6 +196,8 @@ class VamCore:
 
         if destination == 'scale':
             self._scale_session = sm.scale_modal_begin(self.axis, self.base)
+            if self._scale_session is None:
+                self._unfreeze_modal_camera()
             print(
                 "[VAM scale] _transition → scale: "
                 f"session={'OK' if self._scale_session else 'None'} "
@@ -460,7 +476,33 @@ class VamCore:
             print("[VAM scale] detach_tool_context: restoring modal session (tool off)")
             sm.scale_modal_restore(self._scale_session)
             self._scale_session = None
+        self._unfreeze_modal_camera()
         self._tool_context = None
+
+    def _freeze_modal_camera(self):
+        """Lock active viewport camera while modal transform is running."""
+        if self._modal_camera_path:
+            return
+        try:
+            view = omui.M3dView.active3dView()
+            if view is None or not view.isVisible():
+                return
+            cam_path = view.getCamera()
+            cmds.camera(cam_path, edit=True, lt=True)
+            self._modal_camera_path = cam_path
+        except Exception:
+            self._modal_camera_path = None
+
+    def _unfreeze_modal_camera(self):
+        """Unlock viewport camera after modal transform exits."""
+        cam_path = self._modal_camera_path
+        if not cam_path:
+            return
+        try:
+            cmds.camera(cam_path, edit=True, lt=False)
+        except Exception:
+            pass
+        self._modal_camera_path = None
 
     def _reset_axis_base(self):
         """Reset axis and base to default values."""
@@ -470,7 +512,6 @@ class VamCore:
     def _confirm_translate_modal(self):
         """Commit modal translation and return to normal state."""
         print("[VAM translate] _confirm_translate_modal (LMB)")
-        tm.unfreeze_camera(self._translate_session)
         self._translate_session = None
         self._reset_axis_base()
         self._transition('to_normal')
