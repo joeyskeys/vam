@@ -115,6 +115,33 @@ def _handle_register_picking(key):
     return True
 
 
+def _handle_register_shift_picking(key):
+    vam_core = get_vam_core()
+    if vam_core.state != 'register_shift_picking':
+        return False
+
+    objects = vam_core.register_manager.get_register_objects(key)
+    if objects:
+        cmds.select(*objects, add=True)
+    vam_core._transition('to_normal')
+    return True
+
+
+def _handle_register_alt_picking(key):
+    vam_core = get_vam_core()
+    if vam_core.state != 'register_alt_picking':
+        return False
+
+    objects = vam_core.register_manager.get_register_objects(key)
+    if objects:
+        current_selection = set(cmds.ls(sl=True, long=True) or [])
+        objects_to_remove = [obj for obj in objects if obj in current_selection]
+        if objects_to_remove:
+            cmds.select(*objects_to_remove, deselect=True)
+    vam_core._transition('to_normal')
+    return True
+
+
 def vam_handle_key_press(key, mod_flags=None, is_press=True):
     print('in handle key press:')
     print('key', key)
@@ -133,6 +160,12 @@ def vam_handle_key_press(key, mod_flags=None, is_press=True):
         return
 
     if _handle_register_picking(key):
+        return
+
+    if _handle_register_shift_picking(key):
+        return
+
+    if _handle_register_alt_picking(key):
         return
 
 

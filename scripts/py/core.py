@@ -39,7 +39,7 @@ class VamCore:
             'source': {'normal'},
             'destination': 'translate',
             'shortcuts': (
-                {'key': 'g', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                {'key': 'w', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {'trs': 'translate'},
         },
@@ -47,7 +47,7 @@ class VamCore:
             'source': {'normal'},
             'destination': 'rotate',
             'shortcuts': (
-                {'key': 'r', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                {'key': 'e', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {'trs': 'rotate'},
         },
@@ -55,12 +55,12 @@ class VamCore:
             'source': {'normal'},
             'destination': 'scale',
             'shortcuts': (
-                {'key': 's', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                {'key': 'r', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
             ),
             'updates': {'trs': 'scale'},
         },
         'to_normal': {
-            'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'},
+            'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking', 'register_shift_picking', 'register_alt_picking'},
             'destination': 'normal',
             'shortcuts': (
                 {'key': 'q', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
@@ -80,6 +80,22 @@ class VamCore:
             'destination': 'register_picking',
             'shortcuts': (
                 {'key': 't', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+            ),
+            'updates': {},
+        },
+        'to_register_shift_picking': {
+            'source': {'normal'},
+            'destination': 'register_shift_picking',
+            'shortcuts': (
+                {'key': 't', 'ctl': True, 'alt': False, 'sht': True, 'is_press': True},
+            ),
+            'updates': {},
+        },
+        'to_register_alt_picking': {
+            'source': {'normal'},
+            'destination': 'register_alt_picking',
+            'shortcuts': (
+                {'key': 't', 'ctl': True, 'alt': True, 'sht': False, 'is_press': True},
             ),
             'updates': {},
         },
