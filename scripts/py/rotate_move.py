@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
+from utils import object_pivots_world
 
 
 def _event_viewport_xy(event: Any) -> Tuple[float, float]:
@@ -179,6 +180,7 @@ def rotate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'pivot_path': transforms[-1],
         'pivot_pt': pivot_pt,
         'pivot_screen': pivot_screen,
+        'object_pivots': object_pivots_world(transforms),
         'initial_world_m': {p: _world_matrix(p) for p in transforms},
         'paths': transforms,
     }
@@ -237,15 +239,15 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
     if is_axis_constrained:
         angle = -angle
 
-    pivot = session['pivot_pt']
-    pivot_m = _translation_matrix(pivot)
-    pivot_inv_m = _translation_matrix(-pivot)
     rot_m = _rotation_matrix(rotate_axis, angle)
-    delta_m = pivot_m * rot_m * pivot_inv_m
 
     for path in session['paths']:
+        pivot = session['object_pivots'].get(path, session['pivot_pt'])
+        pivot_m = _translation_matrix(pivot)
+        pivot_inv_m = _translation_matrix(-pivot)
+        delta_m = pivot_inv_m * rot_m * pivot_m
         initial_m = session['initial_world_m'][path]
-        new_m = delta_m * initial_m
+        new_m = initial_m * delta_m
         cmds.xform(path, matrix=_matrix_to_list(new_m), worldSpace=True)
 
 

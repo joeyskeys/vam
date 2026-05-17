@@ -192,12 +192,6 @@ def _selection_pivot(paths: List[str]) -> om.MVector:
     )
 
 
-def unfreeze_camera(session: Dict[str, Any]) -> None:
-    """Unfreeze camera in the current viewport."""
-    cam_path = session['cam_path']
-    cmds.camera(cam_path, edit=True, lt=False)
-
-
 def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
     """
     Begin modal translation when entering translate state (no mouse button required).
@@ -222,7 +216,6 @@ def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         return None
 
     cam_path = view.getCamera()
-    cmds.camera(cam_path, edit=True, lt=True)
 
     eye, view_right, view_up, view_forward = _camera_view_frame(cam_path)
     pivot_pt = _selection_pivot(transforms)
@@ -321,4 +314,3 @@ def translate_modal_restore(session: Dict[str, Any]) -> None:
     """Restore world translations captured at modal begin (cancel)."""
     for path, t0 in session['initial_world_t'].items():
         cmds.xform(path, translation=t0, worldSpace=True, absolute=True)
-    unfreeze_camera(session)
