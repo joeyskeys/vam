@@ -130,9 +130,10 @@ def _local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector
     sel.add(pivot_path)
     dag = sel.getDagPath(0)
     m = dag.inclusiveMatrix()
-    lx = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
-    ly = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
-    lz = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
+    # Keep axis extraction consistent with this tool's row-vector matrix usage.
+    lx = om.MVector(m.getElement(0, 0), m.getElement(0, 1), m.getElement(0, 2)).normalize()
+    ly = om.MVector(m.getElement(1, 0), m.getElement(1, 1), m.getElement(1, 2)).normalize()
+    lz = om.MVector(m.getElement(2, 0), m.getElement(2, 1), m.getElement(2, 2)).normalize()
     return lx, ly, lz
 
 
