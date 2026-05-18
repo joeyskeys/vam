@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
+from utils import local_axes_world
 
 
 def _event_viewport_xy(event: Any) -> Tuple[float, float]:
@@ -118,25 +119,6 @@ def _plane_delta_raw(dx_px: float, dy_px: float, view_right: om.MVector, view_up
     return view_right * dx_px * sx + view_up * dy_px * sy
 
 
-def _local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector, om.MVector]:
-    """Pivot object's local X/Y/Z as unit vectors in world space."""
-    if not pivot_path:
-        return (
-            om.MVector(1, 0, 0),
-            om.MVector(0, 1, 0),
-            om.MVector(0, 0, 1),
-        )
-    sel = om.MSelectionList()
-    sel.add(pivot_path)
-    dag = sel.getDagPath(0)
-    m = dag.inclusiveMatrix()
-    # Keep axis extraction consistent with this tool's row-vector matrix usage.
-    lx = om.MVector(m.getElement(0, 0), m.getElement(0, 1), m.getElement(0, 2)).normalize()
-    ly = om.MVector(m.getElement(1, 0), m.getElement(1, 1), m.getElement(1, 2)).normalize()
-    lz = om.MVector(m.getElement(2, 0), m.getElement(2, 1), m.getElement(2, 2)).normalize()
-    return lx, ly, lz
-
-
 def _axis_direction_for_base(axis: str, base: str, session: Dict[str, Any],
                              view_right: om.MVector, view_up: om.MVector,
                              view_forward: om.MVector) -> Optional[om.MVector]:
@@ -146,7 +128,7 @@ def _axis_direction_for_base(axis: str, base: str, session: Dict[str, Any],
 
     idx = {'x': 0, 'y': 1, 'z': 2}[axis]
     if base == 'local':
-        return _local_axes_world(session.get('pivot_path'))[idx]
+        return local_axes_world(session.get('pivot_path'))[idx]
     if base == 'world':
         return (
             om.MVector(1, 0, 0),

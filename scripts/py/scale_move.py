@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
-from utils import object_pivots_world
+from utils import local_axes_world, object_pivots_world
 
 
 def _event_viewport_xy(event: Any) -> Tuple[float, float]:
@@ -85,24 +85,6 @@ def _selection_ref_len(paths: List[str]) -> float:
     return max(diag, 1.0e-3)
 
 
-def _local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector, om.MVector]:
-    """Pivot object's local X/Y/Z as unit vectors in world space."""
-    if not pivot_path:
-        return (
-            om.MVector(1, 0, 0),
-            om.MVector(0, 1, 0),
-            om.MVector(0, 0, 1),
-        )
-    sel = om.MSelectionList()
-    sel.add(pivot_path)
-    dag = sel.getDagPath(0)
-    m = dag.inclusiveMatrix()
-    lx = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
-    ly = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
-    lz = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
-    return lx, ly, lz
-
-
 def _world_matrix(path: str) -> om.MMatrix:
     return om.MMatrix(cmds.xform(path, query=True, matrix=True, worldSpace=True))
 
@@ -154,7 +136,7 @@ def _axis_direction_for_base(axis: str, base: str, pivot_path: Optional[str]) ->
         return None
     idx = {'x': 0, 'y': 1, 'z': 2}[axis]
     if base == 'local':
-        return _local_axes_world(pivot_path)[idx]
+        return local_axes_world(pivot_path)[idx]
     return (
         om.MVector(1, 0, 0),
         om.MVector(0, 1, 0),

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import functools
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import maya.api.OpenMaya as om
 import maya.cmds as cmds
@@ -30,3 +30,24 @@ def object_pivots_world(paths: List[str]) -> Dict[str, om.MVector]:
             (float(bb[2]) + float(bb[5])) * 0.5,
         )
     return out
+
+
+def local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector, om.MVector]:
+    """Return local X/Y/Z axes in world space for a transform path."""
+    if not pivot_path:
+        return (
+            om.MVector(1, 0, 0),
+            om.MVector(0, 1, 0),
+            om.MVector(0, 0, 1),
+        )
+
+    sel = om.MSelectionList()
+    sel.add(pivot_path)
+    dag = sel.getDagPath(0)
+    m = dag.inclusiveMatrix()
+
+    # Keep extraction consistent with row-vector matrix usage in this project.
+    lx = om.MVector(m.getElement(0, 0), m.getElement(0, 1), m.getElement(0, 2)).normalize()
+    ly = om.MVector(m.getElement(1, 0), m.getElement(1, 1), m.getElement(1, 2)).normalize()
+    lz = om.MVector(m.getElement(2, 0), m.getElement(2, 1), m.getElement(2, 2)).normalize()
+    return lx, ly, lz

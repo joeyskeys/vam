@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.cmds as cmds
-from utils import object_pivots_world
+from utils import local_axes_world, object_pivots_world
 
 
 def _event_viewport_xy(event: Any) -> Tuple[float, float]:
@@ -65,24 +65,6 @@ def _selection_pivot(paths: List[str]) -> om.MVector:
     )
 
 
-def _local_axes_world(pivot_path: Optional[str]) -> Tuple[om.MVector, om.MVector, om.MVector]:
-    """Pivot object's local X/Y/Z as unit vectors in world space."""
-    if not pivot_path:
-        return (
-            om.MVector(1, 0, 0),
-            om.MVector(0, 1, 0),
-            om.MVector(0, 0, 1),
-        )
-    sel = om.MSelectionList()
-    sel.add(pivot_path)
-    dag = sel.getDagPath(0)
-    m = dag.inclusiveMatrix()
-    lx = om.MVector(m.getElement(0, 0), m.getElement(1, 0), m.getElement(2, 0)).normalize()
-    ly = om.MVector(m.getElement(0, 1), m.getElement(1, 1), m.getElement(2, 1)).normalize()
-    lz = om.MVector(m.getElement(0, 2), m.getElement(1, 2), m.getElement(2, 2)).normalize()
-    return lx, ly, lz
-
-
 def _world_matrix(path: str) -> om.MMatrix:
     return om.MMatrix(cmds.xform(path, query=True, matrix=True, worldSpace=True))
 
@@ -100,12 +82,19 @@ def _translation_matrix(v: om.MVector) -> om.MMatrix:
     ))
 
 
-def _axis_direction_for_base(axis: str, base: str, pivot_path: Optional[str]) -> Optional[om.MVector]:
+def _axis_direction_for_base(
+    axis: str,
+    base: str,
+    pivot_path: Optional[str],
+    local_axes_start: Optional[Tuple[om.MVector, om.MVector, om.MVector]] = None,
+) -> Optional[om.MVector]:
     if axis not in ('x', 'y', 'z'):
         return None
     idx = {'x': 0, 'y': 1, 'z': 2}[axis]
     if base == 'local':
-        return _local_axes_world(pivot_path)[idx]
+        if local_axes_start is not None:
+            return local_axes_start[idx]
+        return local_axes_world(pivot_path)[idx]
     return (
         om.MVector(1, 0, 0),
         om.MVector(0, 1, 0),
@@ -123,32 +112,32 @@ def _rotation_matrix(axis: om.MVector, angle_rad: float) -> om.MMatrix:
     return q.asMatrix()
 
 
-def _signed_mouse_orbit_angle(pivot_x: float, pivot_y: float,
-                              start_x: float, start_y: float,
+def _signed_mouse_orbit_delta(pivot_x: float, pivot_y: float,
+                              prev_x: float, prev_y: float,
                               cur_x: float, cur_y: float) -> float:
     """
-    Signed angle (radians) between start and current mouse vectors around pivot.
+    Incremental signed orbit angle (radians) from previous to current mouse vector.
 
-    This gives Blender-like "rotate by orbiting around the object center" behavior.
+    Uses normalized direction vectors around pivot, so angle is independent of
+    cursor radius (distance from object on screen).
     """
-    sx = start_x - pivot_x
-    sy = start_y - pivot_y
+    px = prev_x - pivot_x
+    py = prev_y - pivot_y
     cx = cur_x - pivot_x
     cy = cur_y - pivot_y
-    ls = (sx * sx + sy * sy) ** 0.5
+
+    lp = (px * px + py * py) ** 0.5
     lc = (cx * cx + cy * cy) ** 0.5
-    if ls < 1.0e-5 or lc < 1.0e-5:
+    if lp < 1.0e-5 or lc < 1.0e-5:
         return 0.0
 
-    sx /= ls
-    sy /= ls
+    px /= lp
+    py /= lp
     cx /= lc
     cy /= lc
 
-    cross = sx * cy - sy * cx
-    dot = max(-1.0, min(1.0, sx * cx + sy * cy))
-    # Viewport pixel Y is typically down-positive, so flip sign to keep drag
-    # direction intuitive for circular mouse motion around pivot.
+    cross = px * cy - py * cx
+    dot = max(-1.0, min(1.0, px * cx + py * cy))
     return -math.atan2(cross, dot)
 
 
@@ -174,10 +163,14 @@ def rotate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'base': base,
         'start_mx': None,
         'start_my': None,
+        'orbit_prev_mx': None,
+        'orbit_prev_my': None,
+        'orbit_angle_accum': 0.0,
         'view_right': view_right,
         'view_up': view_up,
         'view_forward': view_forward,
         'pivot_path': transforms[-1],
+        'local_axes_start': local_axes_world(transforms[-1]),
         'pivot_pt': pivot_pt,
         'pivot_screen': pivot_screen,
         'object_pivots': object_pivots_world(transforms),
@@ -193,10 +186,15 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
     if session['start_mx'] is None:
         session['start_mx'] = mx
         session['start_my'] = my
+        session['orbit_prev_mx'] = mx
+        session['orbit_prev_my'] = my
+        session['orbit_angle_accum'] = 0.0
         return
 
     base = session.get('base', 'screen')
     axis = session.get('axis', 'none')
+    dx = mx - session['start_mx']
+    dy = my - session['start_my']
     view_forward = session['view_forward']
     view = omui.M3dView.active3dView()
     if view is not None and view.isVisible():
@@ -221,7 +219,12 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
         rotate_axis = view_forward
         is_axis_constrained = False
     else:
-        rotate_axis = _axis_direction_for_base(axis, base, session.get('pivot_path'))
+        rotate_axis = _axis_direction_for_base(
+            axis,
+            base,
+            session.get('pivot_path'),
+            session.get('local_axes_start'),
+        )
         if rotate_axis is None:
             rotate_axis = view_forward
             is_axis_constrained = False
@@ -229,12 +232,26 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
             is_axis_constrained = True
 
     if pivot_screen is None:
-        dx = mx - session['start_mx']
-        dy = my - session['start_my']
         angle = (dx - dy) * 0.0045
     else:
         px, py = pivot_screen
-        angle = _signed_mouse_orbit_angle(px, py, session['start_mx'], session['start_my'], mx, my)
+        prev_mx = session.get('orbit_prev_mx')
+        prev_my = session.get('orbit_prev_my')
+        if prev_mx is None or prev_my is None:
+            prev_mx = session['start_mx']
+            prev_my = session['start_my']
+
+        delta_angle = _signed_mouse_orbit_delta(
+            px, py,
+            prev_mx, prev_my,
+            mx, my,
+        )
+
+        accum_angle = float(session.get('orbit_angle_accum', 0.0)) + delta_angle
+        session['orbit_prev_mx'] = mx
+        session['orbit_prev_my'] = my
+        session['orbit_angle_accum'] = accum_angle
+        angle = accum_angle
 
     if is_axis_constrained:
         angle = -angle
