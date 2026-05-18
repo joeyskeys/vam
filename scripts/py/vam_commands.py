@@ -69,6 +69,9 @@ def _handle_exit_tool(key, mod_flags=None, is_press=True):
 
 def _handle_axis_setup(key):
     vam_core = get_vam_core()
+    if vam_core.state not in ('translate', 'rotate', 'scale'):
+        return False
+
     if not key:
         return False
 
