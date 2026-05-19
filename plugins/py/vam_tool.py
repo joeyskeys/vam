@@ -7,7 +7,6 @@ from importlib import reload
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.api.OpenMayaRender as omr
-import maya.OpenMayaRender as omr1
 import maya.cmds as cmds
 
 import core
@@ -31,6 +30,79 @@ def maya_useNewAPI():
     pass
 
 
+class VamGuidingLineOp(omr.MUserRenderOperation):
+    def __init__(self, name, vc):
+        super(VamGuidingLineOp, self).__init__(name)
+        self.vam_context = vc
+
+    def execute(self, draw_ctx):
+        return True
+
+    def hasUIDrawables(self):
+        return True
+
+    def addUIDrawables(self, draw_mgr, frame_ctx):
+        vc = self.vam_context
+        if vc is None:
+            return
+
+        state = vc.vam_core.get_current_state()
+        axis = getattr(vc.vam_core, 'axis', 'none')
+        if state not in ('translate', 'rotate', 'scale') or axis not in ('x', 'y', 'z'):
+            return
+
+        lines = vc.vam_core.get_axis_guide_lines()
+        if not lines:
+            return
+
+        color = {
+            'x': om.MColor((1.0, 0.1, 0.1, 0.85)),
+            'y': om.MColor((0.2, 1.0, 0.2, 0.85)),
+            'z': om.MColor((0.25, 0.45, 1.0, 0.85)),
+        }.get(axis, om.MColor((1.0, 1.0, 0.0, 0.85)))
+
+        draw_mgr.beginDrawable()
+        try:
+            try:
+                draw_mgr.setColor(color)
+                draw_mgr.setLineWidth(2.0)
+                draw_mgr.setLineStyle(omr.MUIDrawManager.kSolid)
+            except Exception:
+                pass
+
+            for p1, p2 in lines:
+                draw_mgr.line(p1, p2)
+        finally:
+            draw_mgr.endDrawable()
+
+
+class VamRenderOverride(omr.MRenderOverride):
+    def __init__(self, name, vc):
+        super(VamRenderOverride, self).__init__(name)
+        self._ops = [
+            omr.MSceneRender('vamSceneRender'),
+            VamGuidingLineOp('vamGuidingLineOp', vc),
+            omr.MPresentTarget('vamPresentTarget'),
+        ]
+        self._op_index = 0
+
+    def supportedDrawAPIs(self):
+        return omr.MRenderer.kAllDevices
+
+    def startOperationIterator(self):
+        self._op_index = 0
+        return True
+
+    def renderOperation(self):
+        if 0 <= self._op_index < len(self._ops):
+            return self._ops[self._op_index]
+        return None
+
+    def nextRenderOperation(self):
+        self._op_index += 1
+        return self._op_index < len(self._ops)
+
+
 class VamContext(omui.MPxContext):
     """
     Maya context for VAM tool.
@@ -51,6 +123,7 @@ class VamContext(omui.MPxContext):
         self._dbg_hold_i = 0
         self._dbg_drag_i = 0
         self._dbg_press_i = 0
+        self._render_override = None
 
     @staticmethod
     def _alt_pressed(event):
@@ -95,14 +168,43 @@ class VamContext(omui.MPxContext):
         else:
             self._vam_prev_hotkey_set = None
 
+        self._register_render_override()
+
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
+        self._deregister_render_override()
         self.vam_core.detach_tool_context(self)
 
         if HOTKEY_CONTEXT_AVAILABLE:
             deactivate_vam_hotkey_context()
             restore_vam_tool_hotkey_set(getattr(self, "_vam_prev_hotkey_set", None))
+
+    def _register_render_override(self):
+        print('in register render override')
+        self._deregister_render_override()
+        renderer = omr.MRenderer.theRenderer()
+        if renderer is None:
+            return
+        override_name = f'vamRenderOverride_{id(self)}'
+        override = VamRenderOverride(override_name, self)
+        try:
+            renderer.registerOverride(override)
+            self._render_override = override
+        except Exception:
+            self._render_override = None
+
+    def _deregister_render_override(self):
+        override = self._render_override
+        if override is None:
+            return
+        renderer = omr.MRenderer.theRenderer()
+        if renderer is not None:
+            try:
+                renderer.deregisterOverride(override)
+            except Exception:
+                pass
+        self._render_override = None
 
     def doPress(self, event, drawMgr, frameContext):
         """
@@ -110,15 +212,10 @@ class VamContext(omui.MPxContext):
         
         Forward to state machine for processing by current state.
         """
-        self._dbg_press_i += 1
-        print(f"[VAM translate] VamContext.doPress #{self._dbg_press_i}")
         self.vam_core.handle_viewport_mouse('press', event)
 
     def doPtrMoved(self, event, drawMgr, frameContext):
         """Mouse move in the viewport (no button drag); drives modal translate."""
-        self._dbg_motion_i += 1
-        if self._dbg_motion_i <= 15 or self._dbg_motion_i % 90 == 0:
-            print(f"[VAM translate] VamContext.doMotion #{self._dbg_motion_i}")
         self.vam_core.handle_viewport_mouse('motion', event)
 
     def doHold(self, event, drawMgr, frameContext):
@@ -170,59 +267,6 @@ class VamContext(omui.MPxContext):
             except Exception:
                 pass
         
-    def _draw_axis_guides(self, *args):
-        """Draw modal transform axis guides in post-render callback."""
-        print('in cbk')
-        state = self.vam_core.get_current_state()
-        axis = getattr(self.vam_core, 'axis', 'none')
-        if state not in ('translate', 'rotate', 'scale') or axis not in ('x', 'y', 'z'):
-            return
-
-        lines = self.vam_core.get_axis_guide_lines()
-        if not lines:
-            return
-
-        color = {
-            'x': (1.0, 0.1, 0.1, 0.85),
-            'y': (0.2, 1.0, 0.2, 0.85),
-            'z': (0.25, 0.45, 1.0, 0.85),
-        }.get(axis, (1.0, 1.0, 0.0, 0.85))
-
-        view = omui.M3dView.active3dView()
-        renderer = omr1.MHardwareRenderer.theRenderer()
-        if renderer is None:
-            return
-        glft = renderer.glFunctionTable()
-        if glft is None:
-            return
-
-        try:
-            view.beginGL()
-            glft.glPushAttrib(
-                omr1.MGL_CURRENT_BIT |
-                omr1.MGL_ENABLE_BIT |
-                omr1.MGL_LINE_BIT
-            )
-
-            glft.glDisable(omr1.MGL_LIGHTING)
-            glft.glLineWidth(2.0)
-            glft.glColor4f(color[0], color[1], color[2], color[3])
-
-            glft.glBegin(omr1.MGL_LINES)
-            for p1, p2 in lines:
-                glft.glVertex3f(float(p1.x), float(p1.y), float(p1.z))
-                glft.glVertex3f(float(p2.x), float(p2.y), float(p2.z))
-            glft.glEnd()
-        except Exception:
-            pass
-        finally:
-            try:
-                glft.glPopAttrib()
-                view.endGL()
-            except Exception:
-                pass
-        
-
 class VamContextCmd(omui.MPxContextCommand):
     def __init__(self):
         super(VamContextCmd, self).__init__()

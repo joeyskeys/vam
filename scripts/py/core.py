@@ -159,28 +159,16 @@ class VamCore:
 
         if prev_state == 'translate' and destination != 'translate':
             if self._translate_session is not None:
-                print(
-                    "[VAM translate] leaving translate state → restore "
-                    f"(trigger={trigger_name!r} dest={destination!r})"
-                )
                 tm.translate_modal_restore(self._translate_session)
                 self._translate_session = None
 
         if prev_state == 'scale' and destination != 'scale':
             if self._scale_session is not None:
-                print(
-                    "[VAM scale] leaving scale state → restore "
-                    f"(trigger={trigger_name!r} dest={destination!r})"
-                )
                 sm.scale_modal_restore(self._scale_session)
                 self._scale_session = None
 
         if prev_state == 'rotate' and destination != 'rotate':
             if self._rotate_session is not None:
-                print(
-                    "[VAM rotate] leaving rotate state → restore "
-                    f"(trigger={trigger_name!r} dest={destination!r})"
-                )
                 rm.rotate_modal_restore(self._rotate_session)
                 self._rotate_session = None
 
@@ -194,31 +182,16 @@ class VamCore:
             self._translate_session = tm.translate_modal_begin(self.axis, self.base)
             if self._translate_session is None:
                 self._unfreeze_modal_camera()
-            print(
-                "[VAM translate] _transition → translate: "
-                f"session={'OK' if self._translate_session else 'None'} "
-                f"(axis={self.axis!r} base={self.base!r})"
-            )
 
         if destination == 'rotate':
             self._rotate_session = rm.rotate_modal_begin(self.axis, self.base)
             if self._rotate_session is None:
                 self._unfreeze_modal_camera()
-            print(
-                "[VAM rotate] _transition → rotate: "
-                f"session={'OK' if self._rotate_session else 'None'} "
-                f"(axis={self.axis!r} base={self.base!r})"
-            )
 
         if destination == 'scale':
             self._scale_session = sm.scale_modal_begin(self.axis, self.base)
             if self._scale_session is None:
                 self._unfreeze_modal_camera()
-            print(
-                "[VAM scale] _transition → scale: "
-                f"session={'OK' if self._scale_session else 'None'} "
-                f"(axis={self.axis!r} base={self.base!r})"
-            )
 
         self.refresh_state_display()
         return True
@@ -313,7 +286,6 @@ class VamCore:
         name_cmd = f"{command}NameCommand"
         cmds.nameCommand(name_cmd, annotation=f"{command}", command=command)
 
-        print('handling key:', key)
         # Clear any existing mapping for this exact key/modifier in the target context.
         cmds.hotkey(
             keyShortcut=key,
@@ -564,15 +536,6 @@ class VamCore:
 
         phase: 'motion' | 'press' | 'drag' | 'release'
         """
-        if phase == 'motion':
-            self._dbg_translate_motion_core += 1
-            if self._dbg_translate_motion_core <= 10 or self._dbg_translate_motion_core % 120 == 0:
-                print(
-                    "[VAM translate] handle_viewport_mouse motion "
-                    f"#{self._dbg_translate_motion_core} state={self.state!r} "
-                    f"session={self._translate_session is not None}"
-                )
-
         if self.state == 'normal' and phase == 'press':
             left_mouse = True
             try:
@@ -653,19 +616,9 @@ class VamCore:
             if phase == 'motion':
                 if self._translate_session:
                     tm.translate_modal_update(self._translate_session, event)
-                else:
-                    if self._dbg_translate_motion_core <= 10:
-                        print(
-                            "[VAM translate] motion: no session "
-                            "(translate_modal_begin failed or empty sel)"
-                        )
                 return
 
             if phase == 'press':
-                print(
-                    f"[VAM translate] handle_viewport_mouse press "
-                    f"session={self._translate_session is not None} -> confirm"
-                )
                 self._confirm_translate_modal()
             return
 
@@ -673,19 +626,9 @@ class VamCore:
             if phase == 'motion':
                 if self._scale_session:
                     sm.scale_modal_update(self._scale_session, event)
-                else:
-                    if self._dbg_translate_motion_core <= 10:
-                        print(
-                            "[VAM scale] motion: no session "
-                            "(scale_modal_begin failed or empty sel)"
-                        )
                 return
 
             if phase == 'press':
-                print(
-                    f"[VAM scale] handle_viewport_mouse press "
-                    f"session={self._scale_session is not None} -> confirm"
-                )
                 self._confirm_scale_modal()
             return
 
@@ -693,19 +636,9 @@ class VamCore:
             if phase == 'motion':
                 if self._rotate_session:
                     rm.rotate_modal_update(self._rotate_session, event)
-                else:
-                    if self._dbg_translate_motion_core <= 10:
-                        print(
-                            "[VAM rotate] motion: no session "
-                            "(rotate_modal_begin failed or empty sel)"
-                        )
                 return
 
             if phase == 'press':
-                print(
-                    f"[VAM rotate] handle_viewport_mouse press "
-                    f"session={self._rotate_session is not None} -> confirm"
-                )
                 self._confirm_rotate_modal()
 
     def _event_screen_xy(self, event):

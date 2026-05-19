@@ -146,10 +146,6 @@ def _handle_register_alt_picking(key):
 
 
 def vam_handle_key_press(key, mod_flags=None, is_press=True):
-    print('in handle key press:')
-    print('key', key)
-    print('mod flags', mod_flags)
-
     if _handle_exit_tool(key, mod_flags=mod_flags, is_press=is_press):
         return
 
@@ -279,7 +275,6 @@ def create_vam_commands(key_bindings):
             command=cmd['command']
         )
         
-        print(f"Created runtime command: {cmd['name']}")
         seen_command_names.add(generated_name)
         generated_bindings.append((key, generated_name, is_press, mod_flags))
 
