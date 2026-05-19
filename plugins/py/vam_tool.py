@@ -7,6 +7,7 @@ from importlib import reload
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 import maya.api.OpenMayaRender as omr
+import maya.OpenMayaRender as omr1
 import maya.cmds as cmds
 
 import core
@@ -166,6 +167,58 @@ class VamContext(omui.MPxContext):
         finally:
             try:
                 drawMgr.endDrawable()
+            except Exception:
+                pass
+        
+    def _draw_axis_guides(self, *args):
+        """Draw modal transform axis guides in post-render callback."""
+        print('in cbk')
+        state = self.vam_core.get_current_state()
+        axis = getattr(self.vam_core, 'axis', 'none')
+        if state not in ('translate', 'rotate', 'scale') or axis not in ('x', 'y', 'z'):
+            return
+
+        lines = self.vam_core.get_axis_guide_lines()
+        if not lines:
+            return
+
+        color = {
+            'x': (1.0, 0.1, 0.1, 0.85),
+            'y': (0.2, 1.0, 0.2, 0.85),
+            'z': (0.25, 0.45, 1.0, 0.85),
+        }.get(axis, (1.0, 1.0, 0.0, 0.85))
+
+        view = omui.M3dView.active3dView()
+        renderer = omr1.MHardwareRenderer.theRenderer()
+        if renderer is None:
+            return
+        glft = renderer.glFunctionTable()
+        if glft is None:
+            return
+
+        try:
+            view.beginGL()
+            glft.glPushAttrib(
+                omr1.MGL_CURRENT_BIT |
+                omr1.MGL_ENABLE_BIT |
+                omr1.MGL_LINE_BIT
+            )
+
+            glft.glDisable(omr1.MGL_LIGHTING)
+            glft.glLineWidth(2.0)
+            glft.glColor4f(color[0], color[1], color[2], color[3])
+
+            glft.glBegin(omr1.MGL_LINES)
+            for p1, p2 in lines:
+                glft.glVertex3f(float(p1.x), float(p1.y), float(p1.z))
+                glft.glVertex3f(float(p2.x), float(p2.y), float(p2.z))
+            glft.glEnd()
+        except Exception:
+            pass
+        finally:
+            try:
+                glft.glPopAttrib()
+                view.endGL()
             except Exception:
                 pass
         

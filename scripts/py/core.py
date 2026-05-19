@@ -10,7 +10,7 @@ from register_manager import RegisterManager
 import rotate_move as rm
 import scale_move as sm
 import translate_move as tm
-from utils import singleton
+from utils import local_axes_world, singleton
 
 
 def get_vam_core():
@@ -744,6 +744,80 @@ class VamCore:
         if abs(x2 - x1) < 2.0 and abs(y2 - y1) < 2.0:
             return None
         return x1, y1, x2, y2
+
+    def get_axis_guide_lines(self):
+        """
+        Return world-space guide line segments for the active transform axis.
+
+        Returns:
+            list[tuple[om.MPoint, om.MPoint]]: Line segments to draw.
+        """
+        if self.state not in ('translate', 'rotate', 'scale'):
+            return []
+        if self.axis not in ('x', 'y', 'z'):
+            return []
+        if self.base not in ('world', 'local'):
+            return []
+
+        paths = cmds.ls(selection=True, type='transform', long=True) or []
+        idx = {'x': 0, 'y': 1, 'z': 2}[self.axis]
+
+        if self.base == 'world':
+            line_len = self._axis_guide_line_length(paths, include_origin=True)
+            direction = (
+                om.MVector(1, 0, 0),
+                om.MVector(0, 1, 0),
+                om.MVector(0, 0, 1),
+            )[idx]
+            return [self._axis_guide_segment(om.MVector(0, 0, 0), direction, line_len)]
+
+        line_len = self._axis_guide_line_length(paths, include_origin=False)
+        lines = []
+        for path in paths:
+            try:
+                origin = cmds.xform(path, query=True, translation=True, worldSpace=True)
+                direction = local_axes_world(path)[idx]
+            except Exception:
+                continue
+            lines.append(
+                self._axis_guide_segment(
+                    om.MVector(float(origin[0]), float(origin[1]), float(origin[2])),
+                    direction,
+                    line_len,
+                )
+            )
+        return lines
+
+    def _axis_guide_line_length(self, paths, include_origin=False):
+        """Choose a visible but bounded guide-line length for the current scene/selection."""
+        try:
+            bbox = cmds.exactWorldBoundingBox(paths) if paths else cmds.exactWorldBoundingBox()
+            dx = float(bbox[3]) - float(bbox[0])
+            dy = float(bbox[4]) - float(bbox[1])
+            dz = float(bbox[5]) - float(bbox[2])
+            diag = (dx * dx + dy * dy + dz * dz) ** 0.5
+            line_len = max(diag * 1.5, 10.0)
+            if include_origin:
+                max_extent = max(abs(float(v)) for v in bbox)
+                line_len = max(line_len, max_extent * 2.0)
+            return line_len
+        except Exception:
+            return 100.0
+
+    @staticmethod
+    def _axis_guide_segment(origin, direction, line_len):
+        """Build a centered world-space line segment."""
+        direction = om.MVector(direction)
+        if direction.length() < 1.0e-8:
+            direction = om.MVector(1, 0, 0)
+        direction.normalize()
+        half = direction * (float(line_len) * 0.5)
+        p1 = origin - half
+        p2 = origin + half
+        return (
+            om.MPoint(p1.x, p1.y, p1.z),
+            om.MPoint(p2.x, p2.y, p2.z),
+        )
 
     def refresh_state_display(self):
         """Update tool title/help and mark MToolsInfo as dirty."""
