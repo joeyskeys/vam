@@ -103,7 +103,14 @@ class VamCore:
 
     # Available transform modes
     trs_modes = ['translate', 'rotate', 'scale']
-    axes = ['none', 'x', 'y', 'z']
+
+    # axis map: shortcut -> axis
+    axes = {
+        'none': 'none',
+        'x': 'x',
+        'y': 'y',
+        'z': 'z',
+    }
     bases = ['screen', 'world', 'local',]
     
     def __init__(self):
