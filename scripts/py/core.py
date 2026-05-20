@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import importlib
+import os, json
 
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
@@ -34,87 +35,88 @@ class VamCore:
     """
     
     states = {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'}
-    transitions = {
-        'to_translate': {
-            'source': {'normal'},
-            'destination': 'translate',
-            'shortcuts': (
-                {'key': 'w', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {'trs': 'translate'},
-        },
-        'to_rotate': {
-            'source': {'normal'},
-            'destination': 'rotate',
-            'shortcuts': (
-                {'key': 'e', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {'trs': 'rotate'},
-        },
-        'to_scale': {
-            'source': {'normal'},
-            'destination': 'scale',
-            'shortcuts': (
-                {'key': 'r', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {'trs': 'scale'},
-        },
-        'to_normal': {
-            'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking', 'register_shift_picking', 'register_alt_picking'},
-            'destination': 'normal',
-            'shortcuts': (
-                {'key': 'q', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {},
-        },
-        'to_register_setup': {
-            'source': {'normal'},
-            'destination': 'register_setup',
-            'shortcuts': (
-                {'key': 'r', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {},
-        },
-        'to_register_picking': {
-            'source': {'normal'},
-            'destination': 'register_picking',
-            'shortcuts': (
-                {'key': 't', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
-            ),
-            'updates': {},
-        },
-        'to_register_shift_picking': {
-            'source': {'normal'},
-            'destination': 'register_shift_picking',
-            'shortcuts': (
-                {'key': 't', 'ctl': True, 'alt': False, 'sht': True, 'is_press': True},
-            ),
-            'updates': {},
-        },
-        'to_register_alt_picking': {
-            'source': {'normal'},
-            'destination': 'register_alt_picking',
-            'shortcuts': (
-                {'key': 't', 'ctl': True, 'alt': True, 'sht': False, 'is_press': True},
-            ),
-            'updates': {},
-        },
-    }
 
     # Available transform modes
     trs_modes = ['translate', 'rotate', 'scale']
 
-    # axis map: shortcut -> axis
-    axes = {
-        'none': 'none',
-        'x': 'x',
-        'y': 'y',
-        'z': 'z',
-    }
     bases = ['screen', 'world', 'local',]
     
     def __init__(self):
         """Initialize VamCore with state and default settings."""
+        self.transitions = {
+            'to_translate': {
+                'source': {'normal'},
+                'destination': 'translate',
+                'shortcuts': (
+                    {'key': 'w', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {'trs': 'translate'},
+            },
+            'to_rotate': {
+                'source': {'normal'},
+                'destination': 'rotate',
+                'shortcuts': (
+                    {'key': 'e', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {'trs': 'rotate'},
+            },
+            'to_scale': {
+                'source': {'normal'},
+                'destination': 'scale',
+                'shortcuts': (
+                    {'key': 'r', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {'trs': 'scale'},
+            },
+            'to_normal': {
+                'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking', 'register_shift_picking', 'register_alt_picking'},
+                'destination': 'normal',
+                'shortcuts': (
+                    {'key': 'q', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {},
+            },
+            'to_register_setup': {
+                'source': {'normal'},
+                'destination': 'register_setup',
+                'shortcuts': (
+                    {'key': 'r', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {},
+            },
+            'to_register_picking': {
+                'source': {'normal'},
+                'destination': 'register_picking',
+                'shortcuts': (
+                    {'key': 't', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {},
+            },
+            'to_register_shift_picking': {
+                'source': {'normal'},
+                'destination': 'register_shift_picking',
+                'shortcuts': (
+                    {'key': 't', 'ctl': True, 'alt': False, 'sht': True, 'is_press': True},
+                ),
+                'updates': {},
+            },
+            'to_register_alt_picking': {
+                'source': {'normal'},
+                'destination': 'register_alt_picking',
+                'shortcuts': (
+                    {'key': 't', 'ctl': True, 'alt': True, 'sht': False, 'is_press': True},
+                ),
+                'updates': {},
+            },
+        }
+
+        # axis map: shortcut -> axis
+        self.axes = {
+            'none': 'none',
+            'x': 'x',
+            'y': 'y',
+            'z': 'z',
+        }
         # Transform settings - shared context across states
         self.trs = 'translate'
         self.axis = 'none'
@@ -141,8 +143,34 @@ class VamCore:
 
         self.key_set = set()
         self.key_mapping = {}
+        self.init_config()
         self.init_key_set()
         self.init_key_mapping()
+
+    def init_config(self):
+        print('init vam config...')
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'configs/vam_config.json')
+        if not os.path.exists(config_path):
+            print(f'vam config file not found: {config_path}')
+            return
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        profile_name = config.get('key_profile', 'default_profile.json')
+        profile_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'configs/', profile_name)
+        if not os.path.exists(profile_path):
+            print(f'vam profile file not found: {profile_path}')
+            return
+        with open(profile_path, 'r') as f:
+            profile = json.load(f)
+
+        self.axes = profile.get('axes', {})
+        transition_shortcuts = profile.get('transitions', {})
+        for transition_name, shortcuts in transition_shortcuts.items():
+            self.transitions[transition_name]['shortcuts'] = shortcuts
+            print(f'transition {transition_name} shortcuts: {shortcuts}')
+
+        print('vam config initialized')
 
     def _transition(self, trigger_name):
         """Execute a minimal state transition by trigger name."""
@@ -207,6 +235,8 @@ class VamCore:
         """Initialize supported hotkey names for VAM mapping."""
         self.key_set.clear()
         for c in range(ord('a'), ord('z') + 1):
+            self.key_set.add(chr(c))
+        for c in range(ord('0'), ord('9') + 1):
             self.key_set.add(chr(c))
 
         for f_n in range(1, 13):
