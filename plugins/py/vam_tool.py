@@ -30,33 +30,6 @@ def maya_useNewAPI():
     pass
 
 
-class VamRenderOverride(omr.MRenderOverride):
-    def __init__(self, name, vc):
-        super(VamRenderOverride, self).__init__(name)
-        self._ops = [
-            omr.MSceneRender('vamSceneRender'),
-            VamGuidingLineOp('vamGuidingLineOp', vc),
-            omr.MPresentTarget('vamPresentTarget'),
-        ]
-        self._op_index = 0
-
-    def supportedDrawAPIs(self):
-        return omr.MRenderer.kAllDevices
-
-    def startOperationIterator(self):
-        self._op_index = 0
-        return True
-
-    def renderOperation(self):
-        if 0 <= self._op_index < len(self._ops):
-            return self._ops[self._op_index]
-        return None
-
-    def nextRenderOperation(self):
-        self._op_index += 1
-        return self._op_index < len(self._ops)
-
-
 class VamContext(omui.MPxContext):
     """
     Maya context for VAM tool.
