@@ -3,3 +3,4 @@ PYTHONPATH +:= scripts/startup
 PYTHONPATH +:= scripts/py
 PYTHONPATH +:= dependencies
 MAYA_PLUG_IN_PATH +:= plugins/py
+XBMLANGPATH +:= icons

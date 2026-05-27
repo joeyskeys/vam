@@ -41,6 +41,10 @@ class VamContext(omui.MPxContext):
     def __init__(self):
         super(VamContext, self).__init__()
         self.setTitleString("VAM - Vim-like Animation Tool")
+        try:
+            self.setImage('vam_tool.xpm', omui.MPxContext.kImage1)
+        except Exception:
+            pass
         # Sets the cursor icon
         self.setCursor(omui.MCursor.kCrossHairCursor)
         
@@ -98,7 +102,6 @@ class VamContext(omui.MPxContext):
     def toolOffCleanup(self):
         """Called when tool is deactivated."""
         print("VAM Tool Deactivated")
-        self._deregister_render_override()
         self.vam_core.detach_tool_context(self)
 
         if HOTKEY_CONTEXT_AVAILABLE:

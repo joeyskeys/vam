@@ -34,7 +34,14 @@ def initialize_vam():
         cmds.loadPlugin('vam_tool')
 
         # create a context command instance
-        cmds.vamCmd('vam')
+        #cmds.vamCmd('vam')
+
+        try:
+            from vam_tool_shelf import setup_vam_tool_button_deferred
+            setup_vam_tool_button_deferred()
+        except Exception:
+            print("Warning: Failed to create VAM tool shelf button:")
+            print(traceback.format_exc())
 
         print("vam initialized successfully")
     except Exception as e:

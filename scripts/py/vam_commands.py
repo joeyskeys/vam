@@ -102,7 +102,7 @@ def _handle_axis_setup(key):
     mapped_axis = vam_core.axes[key]
 
     bases = vam_core.bases
-    if vam_core.axis != 'none' and key != vam_core.axis:
+    if vam_core.axis != 'none' and mapped_axis != vam_core.axis:
         vam_core.base = bases[1]
         vam_core.axis = mapped_axis
     else:
