@@ -34,10 +34,12 @@ class VamCore:
     Implements minimal in-class state transitions without callback hooks.
     """
     
-    states = {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking'}
-
-    # Available transform modes
-    trs_modes = ['translate', 'rotate', 'scale']
+    states = {
+        'normal', 'translate', 'rotate', 'scale',
+        'register_setup', 'register_picking',
+        'register_shift_picking', 'register_alt_picking',
+        'copy',
+    }
 
     bases = ['screen', 'world', 'local',]
     
@@ -69,7 +71,12 @@ class VamCore:
                 'updates': {'trs': 'scale'},
             },
             'to_normal': {
-                'source': {'normal', 'translate', 'rotate', 'scale', 'register_setup', 'register_picking', 'register_shift_picking', 'register_alt_picking'},
+                'source': {
+                    'normal', 'translate', 'rotate', 'scale',
+                    'register_setup', 'register_picking',
+                    'register_shift_picking', 'register_alt_picking',
+                    'copy',
+                },
                 'destination': 'normal',
                 'shortcuts': (
                     {'key': 'q', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
@@ -108,6 +115,21 @@ class VamCore:
                 ),
                 'updates': {},
             },
+            'to_copy': {
+                'source': {'normal'},
+                'destination': 'copy',
+                'shortcuts': (
+                    {'key': 'c', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+                'updates': {},
+            },
+            'to_paste': {
+                'source': {'normal'},
+                'one_shot': True,
+                'shortcuts': (
+                    {'key': 'v', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+            },
         }
 
         # axis map: shortcut -> axis
@@ -117,10 +139,27 @@ class VamCore:
             'y': 'y',
             'z': 'z',
         }
+
+        # trs modes: shortcut -> mode name
+        self.trs_modes = {
+            'w': 'translate',
+            'e': 'rotate',
+            'r': 'scale',
+            'a': 'all',
+        }
+
         # Transform settings - shared context across states
         self.trs = 'translate'
         self.axis = 'none'
         self.base = 'screen'
+
+        # copy buffer
+        self.copy_buffer = {
+            'type': 'all',
+            'translate': [],
+            'rotate': [],
+            'scale': [],
+        }
         
         # State-specific data
         self.moving_initial_values = {}
@@ -164,9 +203,13 @@ class VamCore:
         with open(profile_path, 'r') as f:
             profile = json.load(f)
 
-        self.axes = profile.get('axes', {})
+        self.axes = profile.get('axes', self.axes)
+        self.trs_modes = profile.get('trs_modes', self.trs_modes)
         transition_shortcuts = profile.get('transitions', {})
         for transition_name, shortcuts in transition_shortcuts.items():
+            if transition_name not in self.transitions:
+                print(f'Warning: unknown transition "{transition_name}" in profile, skipped')
+                continue
             self.transitions[transition_name]['shortcuts'] = shortcuts
             print(f'transition {transition_name} shortcuts: {shortcuts}')
 
@@ -533,6 +576,85 @@ class VamCore:
         """Reset axis and base to default values."""
         self.axis = 'none'
         self.base = 'screen'
+
+    def capture_copy_buffer(self, mode):
+        """
+        Copy world-space transform channels from the single selected object.
+
+        Args:
+            mode (str): One of translate, rotate, scale, or all.
+
+        Returns:
+            bool: True when data was stored; False when selection is not exactly one object.
+        """
+        if mode not in ('translate', 'rotate', 'scale', 'all'):
+            return False
+
+        selection = cmds.ls(selection=True, long=True) or []
+        if len(selection) != 1:
+            return False
+
+        obj = selection[0]
+        self.copy_buffer['type'] = mode
+        self.copy_buffer['translate'] = []
+        self.copy_buffer['rotate'] = []
+        self.copy_buffer['scale'] = []
+
+        if mode in ('translate', 'all'):
+            self.copy_buffer['translate'] = list(
+                cmds.xform(obj, query=True, translation=True, worldSpace=True)
+            )
+        if mode in ('rotate', 'all'):
+            self.copy_buffer['rotate'] = list(
+                cmds.xform(obj, query=True, rotation=True, worldSpace=True)
+            )
+        if mode in ('scale', 'all'):
+            self.copy_buffer['scale'] = list(
+                cmds.xform(obj, query=True, scale=True, worldSpace=True)
+            )
+        return True
+
+    def apply_copy_buffer(self):
+        """
+        Apply buffered world-space transform channels to the current selection.
+
+        Returns:
+            bool: True when at least one channel was applied to at least one object.
+        """
+        selection = cmds.ls(selection=True, long=True) or []
+        if not selection:
+            return False
+
+        mode = self.copy_buffer.get('type', 'all')
+        applied = False
+
+        for obj in selection:
+            if mode in ('translate', 'all') and self.copy_buffer.get('translate'):
+                cmds.xform(
+                    obj,
+                    translation=self.copy_buffer['translate'],
+                    worldSpace=True,
+                    absolute=True,
+                )
+                applied = True
+            if mode in ('rotate', 'all') and self.copy_buffer.get('rotate'):
+                cmds.xform(
+                    obj,
+                    rotation=self.copy_buffer['rotate'],
+                    worldSpace=True,
+                    absolute=True,
+                )
+                applied = True
+            if mode in ('scale', 'all') and self.copy_buffer.get('scale'):
+                cmds.xform(
+                    obj,
+                    scale=self.copy_buffer['scale'],
+                    worldSpace=True,
+                    absolute=True,
+                )
+                applied = True
+
+        return applied
 
     def _confirm_translate_modal(self):
         """Commit modal translation and return to normal state."""

@@ -37,6 +37,15 @@ def _is_shortcut_match(shortcut, key, mod_flags, is_press):
     )
 
 
+def _one_shot_paste(vam_core):
+    vam_core.apply_copy_buffer()
+
+
+_ONE_SHOT_HANDLERS = {
+    'to_paste': _one_shot_paste,
+}
+
+
 def _handle_state_switch(key, mod_flags=None, is_press=True):
     vam_core = get_vam_core()
     mod_flags = mod_flags or {}
@@ -45,9 +54,22 @@ def _handle_state_switch(key, mod_flags=None, is_press=True):
         if not isinstance(transition, dict):
             continue
 
+        source_states = transition.get('source', set())
+        if vam_core.state not in source_states:
+            continue
+
         for shortcut in transition.get('shortcuts', ()):
             if not _is_shortcut_match(shortcut, key, mod_flags, is_press):
                 continue
+
+            if transition.get('one_shot'):
+                handler = _ONE_SHOT_HANDLERS.get(trigger_name)
+                if handler:
+                    handler(vam_core)
+                else:
+                    print(f"Warning: one-shot trigger '{trigger_name}' has no handler")
+                vam_core.refresh_state_display()
+                return True
 
             for attr_name, attr_value in transition.get('updates', {}).items():
                 setattr(vam_core, attr_name, attr_value)
@@ -146,6 +168,23 @@ def _handle_register_alt_picking(key):
     return True
 
 
+def _handle_copy(key):
+    """
+    In copy state: w/e/r/a pick which TRS channels to store from one selected object.
+    """
+    vam_core = get_vam_core()
+    if vam_core.state != 'copy':
+        return False
+
+    mode = vam_core.trs_modes.get(key)
+    if not mode:
+        return False
+
+    if vam_core.capture_copy_buffer(mode):
+        vam_core._transition('to_normal')
+    return True
+
+
 def vam_handle_key_press(key, mod_flags=None, is_press=True):
     if _handle_exit_tool(key, mod_flags=mod_flags, is_press=is_press):
         return
@@ -166,6 +205,9 @@ def vam_handle_key_press(key, mod_flags=None, is_press=True):
         return
 
     if _handle_register_alt_picking(key):
+        return
+
+    if _handle_copy(key):
         return
 
 

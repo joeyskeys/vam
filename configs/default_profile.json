@@ -4,6 +4,12 @@
         "2": "y",
         "3": "z"
     },
+    "trs_modes": {
+        "w": "translate",
+        "e": "rotate",
+        "r": "scale",
+        "a": "all"
+    },
     "transitions": {
         "to_translate": [{"key": "w", "ctl": false, "alt": false, "sht": false, "is_press": true}],
         "to_rotate": [{"key": "e", "ctl": false, "alt": false, "sht": false, "is_press": true}],
@@ -12,6 +18,8 @@
         "to_register_setup": [{"key": "r", "ctl": true, "alt": false, "sht": false, "is_press": true}],
         "to_register_picking": [{"key": "t", "ctl": true, "alt": false, "sht": false, "is_press": true}],
         "to_register_shift_picking": [{"key": "t", "ctl": true, "alt": false, "sht": true, "is_press": true}],
-        "to_register_alt_picking": [{"key": "t", "ctl": true, "alt": true, "sht": false, "is_press": true}]
+        "to_register_alt_picking": [{"key": "t", "ctl": true, "alt": true, "sht": false, "is_press": true}],
+        "to_copy": [{"key": "c", "ctl": true, "alt": false, "sht": false, "is_press": true}],
+        "to_paste": [{"key": "v", "ctl": true, "alt": false, "sht": false, "is_press": true}]
     }
 }
