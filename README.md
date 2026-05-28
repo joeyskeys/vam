@@ -8,7 +8,7 @@ VAM adds a custom Maya viewport tool (`vam`) with its own hotkey context. Instea
 
 Activate the tool in Maya:
 
-Click the 
+Click the "vam" icon in the tool shelf to activate vam.
 
 Press `Esc` to leave VAM and return to Maya’s select tool. Default shortcuts below come from `configs/default_profile.json` and can be remapped there.
 
