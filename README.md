@@ -18,6 +18,8 @@ Press `Esc` to leave VAM and return to Maya’s select tool. Default shortcuts b
 
 Enter a dedicated translate, rotate, or scale mode (`w` / `e` / `r` in the default profile). While in that mode, drag in the viewport to manipulate the selection; axis and coordinate-space constraints can be cycled with number keys. Confirm with a click or return to normal with `q`. The viewport camera stays locked during a modal session so framing stays stable while you edit.
 
+![](./screenshots/transform.gif)
+
 ### Registers
 
 Vim-style registers store object selections under single-letter keys.
@@ -27,12 +29,16 @@ Vim-style registers store object selections under single-letter keys.
 - **Recall (add)** — `Ctrl+Shift+T`, then press a letter to add the register’s objects to the selection.
 - **Recall (remove)** — `Ctrl+Alt+T`, then press a letter to deselect objects that are in that register.
 
+![](./screenshots/registers.gif)
+
 ### Copy / paste transforms
 
 Copy and paste world-space transform values between objects (one source object at a time for copy).
 
 - **Copy** — `Ctrl+C` enters copy mode; press `w`, `e`, `r`, or `a` to store translate, rotate, scale, or all channels from the selected object.
 - **Paste** — `Ctrl+V` applies the buffered channels to the current selection.
+
+![](./screenshots/copypaste.gif)
 
 ## Status
 
