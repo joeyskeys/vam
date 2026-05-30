@@ -20,6 +20,7 @@
         "to_register_shift_picking": [{"key": "t", "ctl": true, "alt": false, "sht": true, "is_press": true}],
         "to_register_alt_picking": [{"key": "t", "ctl": true, "alt": true, "sht": false, "is_press": true}],
         "to_copy": [{"key": "c", "ctl": true, "alt": false, "sht": false, "is_press": true}],
-        "to_paste": [{"key": "v", "ctl": true, "alt": false, "sht": false, "is_press": true}]
+        "to_paste": [{"key": "v", "ctl": true, "alt": false, "sht": false, "is_press": true}],
+        "to_undo": [{"key": "z", "ctl": true, "alt": false, "sht": false, "is_press": true}]
     }
 }

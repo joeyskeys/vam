@@ -41,8 +41,13 @@ def _one_shot_paste(vam_core):
     vam_core.apply_copy_buffer()
 
 
+def _one_shot_undo(vam_core):
+    cmds.undo()
+
+
 _ONE_SHOT_HANDLERS = {
     'to_paste': _one_shot_paste,
+    'to_undo': _one_shot_undo,
 }
 
 
