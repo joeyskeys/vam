@@ -45,9 +45,15 @@ def _one_shot_undo(vam_core):
     cmds.undo()
 
 
+def _one_shot_toggle_help(vam_core):
+    from help_hud import toggle_vam_help_hud
+    toggle_vam_help_hud()
+
+
 _ONE_SHOT_HANDLERS = {
     'to_paste': _one_shot_paste,
     'to_undo': _one_shot_undo,
+    'to_toggle_help': _one_shot_toggle_help,
 }
 
 

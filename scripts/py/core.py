@@ -142,6 +142,18 @@ class VamCore:
                     {'key': 'z', 'ctl': True, 'alt': False, 'sht': False, 'is_press': True},
                 ),
             },
+            'to_toggle_help': {
+                'source': {
+                    'normal', 'translate', 'rotate', 'scale',
+                    'register_setup', 'register_picking',
+                    'register_shift_picking', 'register_alt_picking',
+                    'copy',
+                },
+                'one_shot': True,
+                'shortcuts': (
+                    {'key': 'h', 'ctl': False, 'alt': False, 'sht': False, 'is_press': True},
+                ),
+            },
         }
 
         # axis map: shortcut -> axis
@@ -564,6 +576,11 @@ class VamCore:
             self._discard_modal_undo_chunk(self._scale_session)
             self._scale_session = None
         self._unfreeze_modal_camera()
+        try:
+            from help_hud import hide_vam_help_hud
+            hide_vam_help_hud()
+        except Exception:
+            pass
         self._tool_context = None
 
     def _freeze_modal_camera(self):
