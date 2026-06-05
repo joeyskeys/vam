@@ -260,9 +260,7 @@ class VamCore:
             self._freeze_modal_camera()
 
         if prev_state == 'translate' and destination != 'translate':
-            print('modal translate end')
             if self._translate_session is not None:
-                print('translate session is not none')
                 self._cancel_modal_session(
                     self._translate_session, tm.translate_modal_restore
                 )
