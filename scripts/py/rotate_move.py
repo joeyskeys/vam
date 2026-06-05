@@ -176,6 +176,7 @@ def rotate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'object_pivots': object_pivots_world(transforms),
         'initial_world_m': {p: _world_matrix(p) for p in transforms},
         'paths': transforms,
+        'dirty': False,
     }
     return session
 
@@ -257,6 +258,7 @@ def rotate_modal_update(session: Dict[str, Any], event: Any) -> None:
         angle = -angle
 
     rot_m = _rotation_matrix(rotate_axis, angle)
+    session['dirty'] = True
 
     for path in session['paths']:
         pivot = session['object_pivots'].get(path, session['pivot_pt'])

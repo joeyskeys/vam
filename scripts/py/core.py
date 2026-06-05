@@ -198,7 +198,6 @@ class VamCore:
         self._translate_session = None
         self._rotate_session = None
         self._scale_session = None
-        self._modal_undo_open = False
         self._modal_camera_path = None
         self._dbg_translate_motion_core = 0
         self._normal_select_press = None
@@ -261,18 +260,26 @@ class VamCore:
             self._freeze_modal_camera()
 
         if prev_state == 'translate' and destination != 'translate':
+            print('modal translate end')
             if self._translate_session is not None:
-                self._discard_modal_undo_chunk(self._translate_session)
+                print('translate session is not none')
+                self._cancel_modal_session(
+                    self._translate_session, tm.translate_modal_restore
+                )
                 self._translate_session = None
 
         if prev_state == 'scale' and destination != 'scale':
             if self._scale_session is not None:
-                self._discard_modal_undo_chunk(self._scale_session)
+                self._cancel_modal_session(
+                    self._scale_session, sm.scale_modal_restore
+                )
                 self._scale_session = None
 
         if prev_state == 'rotate' and destination != 'rotate':
             if self._rotate_session is not None:
-                self._discard_modal_undo_chunk(self._rotate_session)
+                self._cancel_modal_session(
+                    self._rotate_session, rm.rotate_modal_restore
+                )
                 self._rotate_session = None
 
         if prev_state in ('translate', 'rotate', 'scale') and destination != prev_state:
@@ -285,22 +292,16 @@ class VamCore:
             self._translate_session = tm.translate_modal_begin(self.axis, self.base)
             if self._translate_session is None:
                 self._unfreeze_modal_camera()
-            else:
-                self._begin_modal_undo_chunk('VAM translate')
 
         if destination == 'rotate':
             self._rotate_session = rm.rotate_modal_begin(self.axis, self.base)
             if self._rotate_session is None:
                 self._unfreeze_modal_camera()
-            else:
-                self._begin_modal_undo_chunk('VAM rotate')
 
         if destination == 'scale':
             self._scale_session = sm.scale_modal_begin(self.axis, self.base)
             if self._scale_session is None:
                 self._unfreeze_modal_camera()
-            else:
-                self._begin_modal_undo_chunk('VAM scale')
 
         self.refresh_state_display()
         return True
@@ -565,15 +566,21 @@ class VamCore:
         """Clear the tool context reference (call from toolOffCleanup)."""
         if self._translate_session is not None:
             print("[VAM translate] detach_tool_context: cancel modal session (tool off)")
-            self._discard_modal_undo_chunk(self._translate_session)
+            self._cancel_modal_session(
+                self._translate_session, tm.translate_modal_restore
+            )
             self._translate_session = None
         if self._rotate_session is not None:
             print("[VAM rotate] detach_tool_context: cancel modal session (tool off)")
-            self._discard_modal_undo_chunk(self._rotate_session)
+            self._cancel_modal_session(
+                self._rotate_session, rm.rotate_modal_restore
+            )
             self._rotate_session = None
         if self._scale_session is not None:
             print("[VAM scale] detach_tool_context: cancel modal session (tool off)")
-            self._discard_modal_undo_chunk(self._scale_session)
+            self._cancel_modal_session(
+                self._scale_session, sm.scale_modal_restore
+            )
             self._scale_session = None
         self._unfreeze_modal_camera()
         try:
@@ -610,36 +617,46 @@ class VamCore:
 
     @staticmethod
     def _modal_session_had_changes(session):
-        """True once the user has moved the mouse during a modal transform."""
-        return session is not None and session.get('start_mx') is not None
+        """True once the user has applied at least one modal transform update."""
+        return session is not None and session.get('dirty', False)
 
-    def _begin_modal_undo_chunk(self, chunk_name):
-        """Open an undo chunk so modal xform updates group into one undo on commit."""
-        if self._modal_undo_open:
-            self._discard_modal_undo_chunk()
+    @staticmethod
+    def _without_undo_recording(fn):
+        """Run ``fn`` without pushing its DG edits onto the undo queue."""
+        cmds.undoInfo(stateWithoutFlush=True)
+        try:
+            fn()
+        finally:
+            cmds.undoInfo(stateWithoutFlush=False)
+
+    def _cancel_modal_session(self, session, restore_fn):
+        """Revert a preview modal transform without leaving undo history."""
+        print(f"[VAM translate] _cancel_modal_session: canceling session {session}")
+        if not self._modal_session_had_changes(session):
+            print(f"[VAM translate] _cancel_modal_session: no changes to cancel")
+            return
+        if restore_fn and session:
+            print(f"[VAM translate] _cancel_modal_session: restoring session {session}")
+            self._without_undo_recording(lambda: restore_fn(session))
+        else:
+            print(f"[VAM translate] _cancel_modal_session: no restore function or session")
+
+    def _commit_modal_session_undo(self, session, chunk_name, restore_fn, apply_final):
+        """
+        Record one undo step for the modal result.
+
+        Preview xforms are not undoable; on confirm we rewind to the session
+        snapshot, then replay the final pose inside a single undo chunk.
+        """
+        if not self._modal_session_had_changes(session):
+            return
+
+        self._without_undo_recording(lambda: restore_fn(session))
         cmds.undoInfo(openChunk=True, chunkName=chunk_name)
-        self._modal_undo_open = True
-
-    def _commit_modal_undo_chunk(self):
-        """Close the modal undo chunk and keep it on the undo queue (confirm)."""
-        if not self._modal_undo_open:
-            return
-        cmds.undoInfo(closeChunk=True)
-        self._modal_undo_open = False
-
-    def _discard_modal_undo_chunk(self, session=None):
-        """
-        Close the modal undo chunk and remove it from history (cancel).
-
-        Reverts in-scene changes via Maya undo when the session had motion.
-        """
-        if not self._modal_undo_open:
-            return
-        had_changes = self._modal_session_had_changes(session)
-        cmds.undoInfo(closeChunk=True)
-        self._modal_undo_open = False
-        if had_changes:
-            cmds.undo()
+        try:
+            apply_final(session)
+        finally:
+            cmds.undoInfo(closeChunk=True)
 
     def _reset_axis_base(self):
         """Reset axis and base to default values."""
@@ -728,7 +745,25 @@ class VamCore:
     def _confirm_translate_modal(self):
         """Commit modal translation and return to normal state."""
         print("[VAM translate] _confirm_translate_modal (LMB)")
-        self._commit_modal_undo_chunk()
+        session = self._translate_session
+        if session is not None:
+            finals = {
+                path: cmds.xform(path, query=True, translation=True, worldSpace=True)
+                for path in session['paths']
+            }
+
+            def apply_final(_session):
+                for path in _session['paths']:
+                    cmds.xform(
+                        path,
+                        translation=finals[path],
+                        worldSpace=True,
+                        absolute=True,
+                    )
+
+            self._commit_modal_session_undo(
+                session, 'VAM translate', tm.translate_modal_restore, apply_final
+            )
         self._translate_session = None
         self._reset_axis_base()
         self._transition('to_normal')
@@ -736,7 +771,20 @@ class VamCore:
     def _confirm_scale_modal(self):
         """Commit modal scaling and return to normal state."""
         print("[VAM scale] _confirm_scale_modal (LMB)")
-        self._commit_modal_undo_chunk()
+        session = self._scale_session
+        if session is not None:
+            finals = {
+                path: cmds.xform(path, query=True, matrix=True, worldSpace=True)
+                for path in session['paths']
+            }
+
+            def apply_final(_session):
+                for path in _session['paths']:
+                    cmds.xform(path, matrix=finals[path], worldSpace=True)
+
+            self._commit_modal_session_undo(
+                session, 'VAM scale', sm.scale_modal_restore, apply_final
+            )
         self._scale_session = None
         self._reset_axis_base()
         self._transition('to_normal')
@@ -744,7 +792,20 @@ class VamCore:
     def _confirm_rotate_modal(self):
         """Commit modal rotation and return to normal state."""
         print("[VAM rotate] _confirm_rotate_modal (LMB)")
-        self._commit_modal_undo_chunk()
+        session = self._rotate_session
+        if session is not None:
+            finals = {
+                path: cmds.xform(path, query=True, matrix=True, worldSpace=True)
+                for path in session['paths']
+            }
+
+            def apply_final(_session):
+                for path in _session['paths']:
+                    cmds.xform(path, matrix=finals[path], worldSpace=True)
+
+            self._commit_modal_session_undo(
+                session, 'VAM rotate', rm.rotate_modal_restore, apply_final
+            )
         self._rotate_session = None
         self._reset_axis_base()
         self._transition('to_normal')
@@ -846,7 +907,9 @@ class VamCore:
         if self.state == 'translate':
             if phase == 'motion':
                 if self._translate_session:
-                    tm.translate_modal_update(self._translate_session, event)
+                    self._without_undo_recording(
+                        lambda: tm.translate_modal_update(self._translate_session, event)
+                    )
                 return
 
             if phase == 'press':
@@ -856,7 +919,9 @@ class VamCore:
         if self.state == 'scale':
             if phase == 'motion':
                 if self._scale_session:
-                    sm.scale_modal_update(self._scale_session, event)
+                    self._without_undo_recording(
+                        lambda: sm.scale_modal_update(self._scale_session, event)
+                    )
                 return
 
             if phase == 'press':
@@ -866,7 +931,9 @@ class VamCore:
         if self.state == 'rotate':
             if phase == 'motion':
                 if self._rotate_session:
-                    rm.rotate_modal_update(self._rotate_session, event)
+                    self._without_undo_recording(
+                        lambda: rm.rotate_modal_update(self._rotate_session, event)
+                    )
                 return
 
             if phase == 'press':

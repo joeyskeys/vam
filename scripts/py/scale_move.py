@@ -183,6 +183,7 @@ def scale_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'ref_len': _selection_ref_len(transforms),
         'initial_world_m': {p: _world_matrix(p) for p in transforms},
         'paths': transforms,
+        'dirty': False,
     }
     return session
 
@@ -222,6 +223,8 @@ def scale_modal_update(session: Dict[str, Any], event: Any) -> None:
             signed = raw * direction
             factor = _clamp_factor(1.0 + sensitivity * (signed / ref_len))
             scale_m = _axis_scale_matrix(direction, factor)
+
+    session['dirty'] = True
 
     for path in session['paths']:
         pivot = session['object_pivots'].get(path, session['pivot_pt'])

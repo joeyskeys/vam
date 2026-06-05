@@ -223,7 +223,7 @@ def translate_modal_begin(axis: str, base: str) -> Optional[Dict[str, Any]]:
         'pivot_pt': pivot_pt,
         'initial_world_t': _selection_world_positions(transforms),
         'paths': transforms,
-        'cam_path': cam_path,
+        'dirty': False,
     }
     return session
 
@@ -287,6 +287,7 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
     delta = _apply_axis_constraint(raw, session, view_right, view_up, view_forward)
 
     dxw, dyw, dzw = delta.x, delta.y, delta.z
+    session['dirty'] = True
 
     for path in session['paths']:
         ox, oy, oz = session['initial_world_t'][path]
@@ -296,4 +297,5 @@ def translate_modal_update(session: Dict[str, Any], event: Any) -> None:
 def translate_modal_restore(session: Dict[str, Any]) -> None:
     """Restore world translations captured at modal begin (cancel)."""
     for path, t0 in session['initial_world_t'].items():
+        print(f"[VAM translate] translate_modal_restore: restoring {path} to {t0}")
         cmds.xform(path, translation=t0, worldSpace=True, absolute=True)
