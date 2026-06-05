@@ -623,23 +623,19 @@ class VamCore:
     @staticmethod
     def _without_undo_recording(fn):
         """Run ``fn`` without pushing its DG edits onto the undo queue."""
-        cmds.undoInfo(stateWithoutFlush=True)
+        # stateWithoutFlush=False disables recording; True restores normal undo.
+        cmds.undoInfo(stateWithoutFlush=False)
         try:
             fn()
         finally:
-            cmds.undoInfo(stateWithoutFlush=False)
+            cmds.undoInfo(stateWithoutFlush=True)
 
     def _cancel_modal_session(self, session, restore_fn):
         """Revert a preview modal transform without leaving undo history."""
-        print(f"[VAM translate] _cancel_modal_session: canceling session {session}")
         if not self._modal_session_had_changes(session):
-            print(f"[VAM translate] _cancel_modal_session: no changes to cancel")
             return
         if restore_fn and session:
-            print(f"[VAM translate] _cancel_modal_session: restoring session {session}")
             self._without_undo_recording(lambda: restore_fn(session))
-        else:
-            print(f"[VAM translate] _cancel_modal_session: no restore function or session")
 
     def _commit_modal_session_undo(self, session, chunk_name, restore_fn, apply_final):
         """
