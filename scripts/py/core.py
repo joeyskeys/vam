@@ -597,7 +597,11 @@ class VamCore:
             if view is None or not view.isVisible():
                 return
             cam_path = view.getCamera()
-            cmds.camera(cam_path, edit=True, lt=True)
+
+            def _lock():
+                cmds.camera(cam_path, edit=True, lt=True)
+
+            self._without_undo_recording(_lock)
             self._modal_camera_path = cam_path
         except Exception:
             self._modal_camera_path = None
@@ -608,7 +612,10 @@ class VamCore:
         if not cam_path:
             return
         try:
-            cmds.camera(cam_path, edit=True, lt=False)
+            def _unlock():
+                cmds.camera(cam_path, edit=True, lt=False)
+
+            self._without_undo_recording(_unlock)
         except Exception:
             pass
         self._modal_camera_path = None
@@ -621,11 +628,20 @@ class VamCore:
     @staticmethod
     def _without_undo_recording(fn):
         """Run ``fn`` without pushing its DG edits onto the undo queue."""
-        # stateWithoutFlush=False disables recording; True restores normal undo.
+        prev_state = cmds.undoInfo(query=True, state=True)
+        prev_swf = cmds.undoInfo(query=True, stateWithoutFlush=True)
         cmds.undoInfo(stateWithoutFlush=False)
         try:
             fn()
         finally:
+            cmds.undoInfo(state=prev_state, stateWithoutFlush=prev_swf)
+
+    @staticmethod
+    def _ensure_undo_recording():
+        """Re-enable undo without flushing the queue (needed before commit chunks)."""
+        if not cmds.undoInfo(query=True, state=True):
+            cmds.undoInfo(state=True)
+        if not cmds.undoInfo(query=True, stateWithoutFlush=True):
             cmds.undoInfo(stateWithoutFlush=True)
 
     def _cancel_modal_session(self, session, restore_fn):
@@ -646,6 +662,7 @@ class VamCore:
             return
 
         self._without_undo_recording(lambda: restore_fn(session))
+        self._ensure_undo_recording()
         cmds.undoInfo(openChunk=True, chunkName=chunk_name)
         try:
             apply_final(session)
