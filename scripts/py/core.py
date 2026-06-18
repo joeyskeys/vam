@@ -235,7 +235,6 @@ class VamCore:
                 print(f'Warning: unknown transition "{transition_name}" in profile, skipped')
                 continue
             self.transitions[transition_name]['shortcuts'] = shortcuts
-            print(f'transition {transition_name} shortcuts: {shortcuts}')
 
         print('vam config initialized')
 
@@ -419,10 +418,6 @@ class VamCore:
                 ctxClient=context_name,
                 **mod_kwargs
             )
-
-        mod_desc = '+'.join(k for k, v in [('ctl', ctrl), ('alt', alt), ('sht', shft)] if v) or 'none'
-        press_release = 'press' if is_press else 'release'
-        print(f"Bound {key} (mods={mod_desc}, {press_release}) to {command} in {context_name}")
         
     def init_key_mapping(self):
         """Initialize default hotkey mappings."""
@@ -467,7 +462,6 @@ class VamCore:
                     {'ctl': ctrl, 'alt': alt, 'sht': shft},
                 )
             )
-        print('bindings', bindings)
         return bindings
 
     @staticmethod
